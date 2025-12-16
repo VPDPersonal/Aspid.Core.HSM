@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Sample/Aspid.Core.HSM.Generators.Sample.csproj" />
+  <Project Path="Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core.HSM.Generators.Tests.csproj" />
+  <Project Path="Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.csproj" />
+</Solution>
