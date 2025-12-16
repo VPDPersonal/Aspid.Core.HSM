@@ -11,8 +11,14 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\ControllerGroupAttribute.cs">
-        <Link>Source\ControllerGroupAttribute.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ControllerGroupAttribute.cs">
+        <Link>Source\Generation\ControllerGroupAttribute.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ParentStateAttribute.cs">
+        <Link>Source\Generation\ParentStateAttribute.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ReverseExecuteAttribute.cs">
+        <Link>Source\Generation\ReverseExecuteAttribute.cs</Link>
       </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IController.cs">
         <Link>Source\IController.cs</Link>
@@ -20,23 +26,23 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IState.cs">
         <Link>Source\IState.cs</Link>
       </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\ParentStateAttribute.cs">
-        <Link>Source\ParentStateAttribute.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IStateMachine.cs">
+        <Link>Source\IStateMachine.cs</Link>
       </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\IEnterController.cs">
-        <Link>Runtime\IEnterController.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IEnterController.cs">
+        <Link>Runtime\Controllers\IEnterController.cs</Link>
       </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\IExitController.cs">
-        <Link>Runtime\IExitController.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IExitController.cs">
+        <Link>Runtime\Controllers\IExitController.cs</Link>
       </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\IFixedUpdateController.cs">
-        <Link>Runtime\IFixedUpdateController.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IFixedUpdateController.cs">
+        <Link>Runtime\Controllers\IFixedUpdateController.cs</Link>
       </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\ILateUpdateController.cs">
-        <Link>Runtime\ILateUpdateController.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\ILateUpdateController.cs">
+        <Link>Runtime\Controllers\ILateUpdateController.cs</Link>
       </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\IUpdateController.cs">
-        <Link>Runtime\IUpdateController.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IUpdateController.cs">
+        <Link>Runtime\Controllers\IUpdateController.cs</Link>
       </Compile>
     </ItemGroup>
 

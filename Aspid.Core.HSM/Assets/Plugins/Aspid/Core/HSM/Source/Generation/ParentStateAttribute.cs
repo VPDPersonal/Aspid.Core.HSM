@@ -4,5 +4,8 @@ using System;
 namespace Aspid.Core.HSM
 {
     [AttributeUsage(AttributeTargets.Class)]
-    public sealed class ParentStateAttribute : Attribute { }
+    public sealed class ParentStateAttribute : Attribute
+    {
+        public ParentStateAttribute(Type parentState) { }
+    }
 }
