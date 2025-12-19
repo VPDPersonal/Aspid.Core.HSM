@@ -4,5 +4,5 @@ using System;
 namespace Aspid.Core.HSM
 {
     [AttributeUsage(AttributeTargets.Method)]
-    public sealed class ReverseExecuteAttribute { }
+    public sealed class ReverseExecuteAttribute  : Attribute { }
 }
