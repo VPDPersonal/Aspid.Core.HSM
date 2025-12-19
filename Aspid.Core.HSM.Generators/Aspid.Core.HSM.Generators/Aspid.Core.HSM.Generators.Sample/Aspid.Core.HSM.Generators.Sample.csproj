@@ -4,6 +4,9 @@
         <TargetFramework>net9.0</TargetFramework>
         <Nullable>enable</Nullable>
         <RootNamespace>Aspid.Core.HSM.Generators.Sample</RootNamespace>
+        <!--        Dont support version-->
+        <!--        <UnityVersion>6000.3.0f1</UnityVersion>-->
+        <UnityVersion>6000.2.7f2</UnityVersion>
     </PropertyGroup>
 
     <ItemGroup>
@@ -11,6 +14,9 @@
     </ItemGroup>
 
     <ItemGroup>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Extensions\StateExtensions.cs">
+        <Link>Source\Extensions\StateExtensions.cs</Link>
+      </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ControllerGroupAttribute.cs">
         <Link>Source\Generation\ControllerGroupAttribute.cs</Link>
       </Compile>
@@ -44,6 +50,13 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IUpdateController.cs">
         <Link>Runtime\Controllers\IUpdateController.cs</Link>
       </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\MonoStateMachine.cs">
+        <Link>Runtime\StateMachines\MonoStateMachine.cs</Link>
+      </Compile>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Unity3D" Version="3.1.1" />
     </ItemGroup>
 
 </Project>
