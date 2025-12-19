@@ -1,9 +1,9 @@
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
-    public interface IExitController : IController
-    {
+    public interface IDisposableController : IController
+    { 
         [ReverseExecute]
-        public void OnExit();
+        public void Dispose();
     }
 }
