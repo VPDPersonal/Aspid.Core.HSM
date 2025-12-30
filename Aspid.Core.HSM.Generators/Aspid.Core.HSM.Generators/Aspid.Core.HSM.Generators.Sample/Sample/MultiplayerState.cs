@@ -5,6 +5,6 @@ public partial class MultiplayerState : IState
 {
     public MultiplayerState()
     {
-        AddControllers(new Sample.PlayerControllerGroup());
+        AddControllers(new PlayerControllerGroup());
     }
 }

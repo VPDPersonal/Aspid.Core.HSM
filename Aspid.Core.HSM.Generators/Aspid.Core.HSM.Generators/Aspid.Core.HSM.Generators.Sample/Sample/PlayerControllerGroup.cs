@@ -1,10 +1,18 @@
 namespace Aspid.Core.HSM.Generators.Sample.Sample;
 
 [ControllerGroup]
-public partial class PlayerControllerGroup
+public partial class PlayerControllerGroup : IUpdateController
 {
     public PlayerControllerGroup()
     {
-        AddControllers();
+        AddControllers(new SomeUpdateController());
+    }
+}
+
+public class SomeUpdateController : IUpdateController
+{
+    public void Update(float deltaTime)
+    {
+        
     }
 }

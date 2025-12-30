@@ -4,5 +4,8 @@ namespace Aspid.Core.HSM.Generators.Descriptions;
 
 public static class HsmClasses
 {
-    public static readonly AttributeText ControllerGroupAttribute = new(nameof(ControllerGroupAttribute), HsmNamespaces.Aspid_Core_HSM);
+    public static readonly TypeText IController = new(nameof(IController), namespaceText: HsmNamespaces.Aspid_Core_HSM);
+    
+    public static readonly AttributeText ReverseExecuteAttribute = new(nameof(ReverseExecuteAttribute), namespaceText: HsmNamespaces.Aspid_Core_HSM);
+    public static readonly AttributeText ControllerGroupAttribute = new(nameof(ControllerGroupAttribute), namespaceText: HsmNamespaces.Aspid_Core_HSM);
 }
