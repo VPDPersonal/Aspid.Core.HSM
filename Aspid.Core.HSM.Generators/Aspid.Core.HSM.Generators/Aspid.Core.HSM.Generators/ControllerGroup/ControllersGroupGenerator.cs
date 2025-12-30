@@ -4,18 +4,21 @@ using Microsoft.CodeAnalysis;
 using Aspid.Generators.Helper;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Runtime.CompilerServices;
+using Aspid.Core.HSM.Generators.ControllerGroup.Bodies;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Aspid.Core.HSM.Generators.Descriptions;
+using Aspid.Core.HSM.Generators.ControllerGroup.Data;
+using Aspid.Core.HSM.Generators.ControllerGroup.Factories;
+using static Aspid.Core.HSM.Generators.Descriptions.HsmClasses;
 
-namespace Aspid.Core.HSM.Generators;
+namespace Aspid.Core.HSM.Generators.ControllerGroup;
 
 [Generator(LanguageNames.CSharp)]
 public sealed class ControllersGroupGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // ReSharper disable once NullableWarningSuppressionIsUsed
-        var provider = context.SyntaxProvider.ForAttributeWithMetadataName(HsmClasses.ControllerGroupAttribute.FullName, Predicate, Transform)
+        // Get all classes that have the ControllerGroupAttribute
+        var provider = context.SyntaxProvider.ForAttributeWithMetadataName(ControllerGroupAttribute.FullName, Predicate, Transform)
             .Where(static foundForSourceGenerator => foundForSourceGenerator.HasValue)
             .Select(static (foundForSourceGenerator, _) => foundForSourceGenerator!.Value);
         
@@ -36,7 +39,7 @@ public sealed class ControllersGroupGenerator : IIncrementalGenerator
         Debug.Assert(context.TargetNode is ClassDeclarationSyntax);
         var classDeclaration = Unsafe.As<ClassDeclarationSyntax>(context.TargetNode);
 
-        return new ControllerGroupData(classDeclaration);
+        return ControllerGroupDataFactory.Create(context.SemanticModel, classDeclaration);
     }
     
     private static void GenerateCode(SourceProductionContext context, ControllerGroupData data)
@@ -44,14 +47,6 @@ public sealed class ControllersGroupGenerator : IIncrementalGenerator
         var declarationSyntax = data.ClassDeclaration;
         var declarationText = new DeclarationText(declarationSyntax);
         NamespaceText? namespaceText = declarationSyntax.GetNamespaceName();
-
-        var code = new CodeWriter();
-        code.BeginClass(namespaceText, declarationText, "Aspid.Core.HSM.IController");
-        code.AppendLine("protected virtual void AddControllers(params Aspid.Core.HSM.IController[] controllers) { }");
-        code.EndClass(declarationSyntax.GetNamespaceName());
-        
-        var fileName = declarationText.GetFileName(namespaceText, "State");
-        
-        context.AddSource(fileName, code.GetSourceText());
+        ControllerGroupBody.Generate(data, namespaceText, declarationText, context);
     }
 }
