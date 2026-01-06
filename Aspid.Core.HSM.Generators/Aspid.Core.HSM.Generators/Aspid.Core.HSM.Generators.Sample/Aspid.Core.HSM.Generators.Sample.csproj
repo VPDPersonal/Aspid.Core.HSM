@@ -44,8 +44,8 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\EmptyState.cs">
         <Link>Source\EmptyState.cs</Link>
       </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\StateTree.cs">
-        <Link>Source\StateTree.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\StateFactory.cs">
+        <Link>Source\StateFactory.cs</Link>
       </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IDisposableController.cs">
         <Link>Runtime\Controllers\IDisposableController.cs</Link>
