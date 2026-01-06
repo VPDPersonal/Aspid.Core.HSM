@@ -1,28 +1,36 @@
 using System;
 using UnityEngine;
+using System.Collections.Generic;
 
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
-    public abstract class MonoStateMachine : MonoBehaviour, IStateMachine
+    public class MonoStateMachine : MonoBehaviour, IStateMachine, IDisposable
     {
-        private IState _currentState;
-        
-        public Type CurrentState => _currentState.GetType();
+        private StateTree _stateTree;
+        private readonly List<IState> _currentStates = new(capacity: 1);
 
-        #region Awake
-        private void Awake()
+        public bool IsInitialized => _stateTree is not null;
+        
+        // TODO Aspid.Core.HSM - Add ZLinq support
+        public IReadOnlyCollection<IState> CurrentStates => _currentStates;
+
+        #region Initialize
+        public void Initialize(StateTree stateTree)
         {
-            OnAwaking();
+            if (IsInitialized) return;
+
+            OnInitializing();
             {
-                _currentState = new RootState();
+                _stateTree = stateTree;
+                _currentStates.Add(new EmptyState());
             }
-            OnAwoke();
+            OnInitialized();
         }
 
-        protected virtual void OnAwaking() { }
+        protected virtual void OnInitialized() { }
         
-        protected virtual void OnAwoke() {}
+        protected virtual void OnInitializing() { }
         #endregion
 
         #region Update
@@ -30,7 +38,8 @@ namespace Aspid.Core.HSM
         {
             OnUpdating();
             {
-                _currentState.GetController<IUpdateController>()?.Update(Time.deltaTime);
+                foreach (var state in _currentStates)
+                    state.GetController<IUpdateController>()?.Update(Time.deltaTime);
             }
             OnUpdated();
         }
@@ -45,7 +54,8 @@ namespace Aspid.Core.HSM
         {
             OnLateUpdating();
             {
-                _currentState.GetController<ILateUpdateController>()?.LateUpdate(Time.deltaTime);
+                foreach (var state in _currentStates)
+                    state.GetController<ILateUpdateController>()?.LateUpdate(Time.deltaTime);
             }
             OnLateUpdated();
         }
@@ -60,7 +70,8 @@ namespace Aspid.Core.HSM
         {
             OnFixedUpdating();
             {
-                _currentState.GetController<IFixedUpdateController>()?.FixedUpdate(Time.deltaTime);
+                foreach (var state in _currentStates)
+                    state.GetController<IFixedUpdateController>()?.FixedUpdate(Time.fixedDeltaTime);
             }
             OnFixedUpdated();
         }
@@ -71,18 +82,25 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region ChangeState
-        public void ChangeState<T>()
-            where T : IState
+        public void ChangeState<TState>()
+            where TState : IState
         {
             OnChangingState();
             {
-                _currentState.GetController<IExitController>()?.OnExit();
-                _currentState.Exit();
+                for (var i = _currentStates.Count - 1; i >= 0; i--)
                 {
-                    _currentState = GetState<T>();
+                    _currentStates[i].GetController<IExitController>()?.OnExit();
+                    _currentStates[i].Exit();
                 }
-                _currentState.Enter();
-                _currentState.GetController<IEnterController>()?.OnEnter();
+                
+                _currentStates.Clear();
+                _currentStates.AddRange(collection: _stateTree.GetState<TState>());
+                
+                foreach (var state in _currentStates)
+                {
+                    state.Enter();
+                    state.GetController<IEnterController>()?.OnEnter();
+                }
             }
             OnChangedState();
         }
@@ -91,8 +109,21 @@ namespace Aspid.Core.HSM
         
         protected virtual void OnChangedState() { }
         #endregion
+
+        #region Dispose
+        public void Dispose()
+        {
+            Disposed();
+            {
+                foreach (var state in _currentStates)
+                    state.GetController<IDisposableController>()?.Dispose();
+            }
+            Disposing();
+        }
+
+        protected virtual void Disposed() { }
         
-        protected abstract IState GetState<T>() 
-            where T : IState;
+        protected virtual void Disposing() { }
+        #endregion
     }
 }
