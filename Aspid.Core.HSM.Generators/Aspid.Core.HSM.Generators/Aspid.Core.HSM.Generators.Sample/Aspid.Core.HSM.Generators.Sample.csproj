@@ -29,6 +29,9 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ReverseExecuteAttribute.cs">
         <Link>Source\Generation\ReverseExecuteAttribute.cs</Link>
       </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IChildState.cs">
+        <Link>Source\IChildState.cs</Link>
+      </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IController.cs">
         <Link>Source\IController.cs</Link>
       </Compile>
@@ -38,8 +41,11 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IStateMachine.cs">
         <Link>Source\IStateMachine.cs</Link>
       </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\RootState.cs">
-        <Link>Source\RootState.cs</Link>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\EmptyState.cs">
+        <Link>Source\EmptyState.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\StateTree.cs">
+        <Link>Source\StateTree.cs</Link>
       </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IDisposableController.cs">
         <Link>Runtime\Controllers\IDisposableController.cs</Link>
@@ -61,6 +67,9 @@
       </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\MonoStateMachine.cs">
         <Link>Runtime\StateMachines\MonoStateMachine.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.cs">
+        <Link>Runtime\StateMachines\StateMachineBase.cs</Link>
       </Compile>
     </ItemGroup>
 
