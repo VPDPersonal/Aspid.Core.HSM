@@ -5,15 +5,15 @@ namespace Aspid.Core.HSM
 {
     public abstract class StateMachineBase : IStateMachine
     {
-        private readonly StateTree _stateTree;
+        private readonly StateFactory _stateFactory;
         private readonly List<IState> _currentStates = new(capacity: 1);
 
         // TODO Aspid.Core.HSM - Add ZLinq support
         public IReadOnlyCollection<IState> CurrentStates => _currentStates;
 
-        protected StateMachineBase(StateTree stateTree)
+        protected StateMachineBase(StateFactory stateFactory)
         {
-            _stateTree = stateTree;
+            _stateFactory = stateFactory;
             _currentStates.Add(new EmptyState());
         }
 

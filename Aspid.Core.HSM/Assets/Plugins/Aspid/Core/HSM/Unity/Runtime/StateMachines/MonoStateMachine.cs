@@ -7,22 +7,22 @@ namespace Aspid.Core.HSM
 {
     public class MonoStateMachine : MonoBehaviour, IStateMachine, IDisposable
     {
-        private StateTree _stateTree;
+        private StateFactory _stateFactory;
         private readonly List<IState> _currentStates = new(capacity: 1);
 
-        public bool IsInitialized => _stateTree is not null;
+        public bool IsInitialized => _stateFactory is not null;
         
         // TODO Aspid.Core.HSM - Add ZLinq support
         public IReadOnlyCollection<IState> CurrentStates => _currentStates;
 
         #region Initialize
-        public void Initialize(StateTree stateTree)
+        public void Initialize(StateFactory stateFactory)
         {
             if (IsInitialized) return;
 
             OnInitializing();
             {
-                _stateTree = stateTree;
+                _stateFactory = stateFactory;
                 _currentStates.Add(new EmptyState());
             }
             OnInitialized();
@@ -91,10 +91,12 @@ namespace Aspid.Core.HSM
                 {
                     _currentStates[i].GetController<IExitController>()?.OnExit();
                     _currentStates[i].Exit();
+                    
+                    _stateFactory.Release(_currentStates[i]);
                 }
                 
                 _currentStates.Clear();
-                _currentStates.AddRange(collection: _stateTree.GetState<TState>());
+                _currentStates.AddRange(collection: _stateFactory.CreateState<TState>());
                 
                 foreach (var state in _currentStates)
                 {
