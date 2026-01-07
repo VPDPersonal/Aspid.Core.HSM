@@ -17,6 +17,9 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Extensions\StateExtensions.cs">
         <Link>Source\Extensions\StateExtensions.cs</Link>
       </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Extensions\StateMachineExtensions.cs">
+        <Link>Source\Extensions\StateMachineExtensions.cs</Link>
+      </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncAttribute.cs">
         <Link>Source\Generation\AsyncAttribute.cs</Link>
       </Compile>

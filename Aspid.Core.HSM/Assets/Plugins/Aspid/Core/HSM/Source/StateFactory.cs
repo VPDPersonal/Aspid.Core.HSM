@@ -6,23 +6,31 @@ namespace Aspid.Core.HSM
 {
     public abstract class StateFactory
     {
-        public IEnumerable<IState> CreateState<TState>()
+        public IEnumerable<IState> CreateState<TState>(IReadOnlyList<IState> activeStates)
             where TState : IState
         {
-            return CreateState(typeof(TState));
+            return CreateState(typeof(TState), activeStates, index: activeStates.Count - 1);
         }
 
-        private IEnumerable<IState> CreateState(Type type)
+        private IEnumerable<IState> CreateState(Type type, IReadOnlyList<IState> activeStates, int index)
         {
-            var state = CreateStateInternal(type);
-            
-            if (state is IChildState childState)
+            if (index >= 0 && type == activeStates[index].GetType())
             {
-                foreach (var parentState in CreateState(childState.ParentState))
-                    yield return parentState;
+                for (var i = 0; i <= index; i++)
+                    yield return activeStates[index];
             }
-            
-            yield return state;
+            else
+            {
+                var state = CreateStateInternal(type);
+                
+                if (state is IChildState childState)
+                {
+                    foreach (var parentState in CreateState(childState.ParentState, activeStates, --index))
+                        yield return parentState;
+                }
+                
+                yield return state;
+            }
         }
 
         protected abstract IState CreateStateInternal(Type type);

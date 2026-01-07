@@ -5,7 +5,7 @@ namespace Aspid.Core.HSM
 {
     public interface IStateMachine
     {
-        public IReadOnlyCollection<IState> CurrentStates { get; }
+        public IReadOnlyList<IState> CurrentStates { get; }
         
         public void ChangeState<T>()
             where T : IState;
