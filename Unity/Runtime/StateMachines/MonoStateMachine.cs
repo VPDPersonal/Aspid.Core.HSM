@@ -100,7 +100,7 @@ namespace Aspid.Core.HSM
                         
                         var count = _currentStates.Count - index;
 
-                        for (var i = 0; i <= count; i++)
+                        for (var i = 0; i < count; i++)
                         {
                             var lastIndex = _currentStates.Count - 1;
                             
