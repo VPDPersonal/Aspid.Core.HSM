@@ -17,7 +17,7 @@ namespace Aspid.Core.HSM
             if (index >= 0 && type == activeStates[index].GetType())
             {
                 for (var i = 0; i <= index; i++)
-                    yield return activeStates[index];
+                    yield return activeStates[i];
             }
             else
             {
