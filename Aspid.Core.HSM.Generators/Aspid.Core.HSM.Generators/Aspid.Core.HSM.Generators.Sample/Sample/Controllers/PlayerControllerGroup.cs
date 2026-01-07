@@ -8,11 +8,3 @@ public partial class PlayerControllerGroup : IUpdateController
         AddControllers(new SomeUpdateController());
     }
 }
-
-public class SomeUpdateController : IUpdateController
-{
-    public void Update(float deltaTime)
-    {
-        
-    }
-}
