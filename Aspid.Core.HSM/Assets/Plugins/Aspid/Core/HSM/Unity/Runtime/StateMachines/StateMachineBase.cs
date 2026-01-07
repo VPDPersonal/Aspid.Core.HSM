@@ -3,14 +3,14 @@ using System.Collections.Generic;
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
-    public abstract class StateMachineBase : IStateMachine
+    public class StateMachineBase : IStateMachine
     {
         private readonly StateFactory _stateFactory;
         private readonly List<IState> _currentStates = new(capacity: 1);
         
         public IReadOnlyList<IState> CurrentStates => _currentStates;
 
-        protected StateMachineBase(StateFactory stateFactory)
+        public StateMachineBase(StateFactory stateFactory)
         {
             _stateFactory = stateFactory;
             _currentStates.Add(new EmptyState());
