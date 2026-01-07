@@ -7,9 +7,8 @@ namespace Aspid.Core.HSM
     {
         private readonly StateFactory _stateFactory;
         private readonly List<IState> _currentStates = new(capacity: 1);
-
-        // TODO Aspid.Core.HSM - Add ZLinq support
-        public IReadOnlyCollection<IState> CurrentStates => _currentStates;
+        
+        public IReadOnlyList<IState> CurrentStates => _currentStates;
 
         protected StateMachineBase(StateFactory stateFactory)
         {
@@ -43,30 +42,75 @@ namespace Aspid.Core.HSM
         {
             OnChangingState();
             {
-                for (var i = _currentStates.Count - 1; i >= 0; i--)
-                {
-                    _currentStates[i].GetController<IExitController>()?.OnExit();
-                    _currentStates[i].Exit();
-                }
+                var index = 0;
 
-                _currentStates.Clear();
-                _currentStates.AddRange(collection: GetStates<TState>());
-
-                foreach (var state in _currentStates)
+                foreach (var state in _stateFactory.CreateState<TState>(_currentStates))
                 {
-                    state.Enter();
-                    state.GetController<IEnterController>()?.OnEnter();
+                    if (index > -1)
+                    {
+                        if (index < _currentStates.Count && state == _currentStates[index])
+                        {
+                            index++;
+                            continue;
+                        }
+                        
+                        var count = _currentStates.Count - index;
+
+                        for (var i = 0; i <= count; i++)
+                        {
+                            var lastIndex = _currentStates.Count - 1;
+                            
+                            ExitState(_currentStates[lastIndex]);
+                            _currentStates.RemoveAt(lastIndex);
+                        }
+
+                        index = -1;
+                    }
+                    
+                    _currentStates.Add(state);
+                    EnterState(state);
                 }
             }
             OnChangedState();
         }
 
         protected virtual void OnChangingState() { }
-
+        
         protected virtual void OnChangedState() { }
+        #endregion
 
-        protected abstract IEnumerable<IState> GetStates<TState>()
-            where TState : IState;
+        #region Exit
+        private void ExitState(IState state)
+        {
+            OnExitingState(state);
+            {
+                state.GetController<IExitController>()?.OnExit();
+                state.Exit();
+            }
+            OnExitedState(state);
+            
+            _stateFactory.Release(state);
+        }
+        
+        protected virtual void OnExitingState(IState state) { }
+        
+        protected virtual void OnExitedState(IState state) { }
+        #endregion
+
+        #region Enter
+        private void EnterState(IState state)
+        {
+            OnEnteringState(state);
+            {
+                state.Enter();
+                state.GetController<IEnterController>()?.OnEnter();
+            }
+            OnEnteredState(state);
+        }
+        
+        protected virtual void OnEnteringState(IState state) { }
+        
+        protected virtual void OnEnteredState(IState state) { }
         #endregion
 
         #region Dispose
