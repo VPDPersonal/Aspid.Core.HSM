@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
 
         <IsPackable>false</IsPackable>
@@ -23,5 +23,53 @@
         <ProjectReference Include="..\Aspid.Core.HSM.Generators\Aspid.Core.HSM.Generators.csproj"/>
     </ItemGroup>
 
+    <!-- HSM Source Files for Testing -->
+    <ItemGroup>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Extensions\StateExtensions.cs">
+            <Link>Source\Extensions\StateExtensions.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IChildState.cs">
+            <Link>Source\IChildState.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IController.cs">
+            <Link>Source\IController.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IState.cs">
+            <Link>Source\IState.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IStateMachine.cs">
+            <Link>Source\IStateMachine.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\EmptyState.cs">
+            <Link>Source\EmptyState.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\StateFactory.cs">
+            <Link>Source\StateFactory.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IDisposableController.cs">
+            <Link>Runtime\Controllers\IDisposableController.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IEnterController.cs">
+            <Link>Runtime\Controllers\IEnterController.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IExitController.cs">
+            <Link>Runtime\Controllers\IExitController.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IFixedUpdateController.cs">
+            <Link>Runtime\Controllers\IFixedUpdateController.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\ILateUpdateController.cs">
+            <Link>Runtime\Controllers\ILateUpdateController.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IUpdateController.cs">
+            <Link>Runtime\Controllers\IUpdateController.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.cs">
+            <Link>Runtime\StateMachines\StateMachineBase.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ReverseExecuteAttribute.cs">
+            <Link>Source\Generation\ReverseExecuteAttribute.cs</Link>
+        </Compile>
+    </ItemGroup>
 
 </Project>
