@@ -1,3 +1,5 @@
+using System;
+
 namespace Aspid.Core.HSM.Generators.Sample.Sample;
 
 [ControllerGroup]
@@ -6,6 +8,6 @@ public partial class MultiplayerInventoryState : IState
 {
     public MultiplayerInventoryState()
     {
-        AddControllers();
+        AddControllers(new SomeUpdateController());
     }
 }

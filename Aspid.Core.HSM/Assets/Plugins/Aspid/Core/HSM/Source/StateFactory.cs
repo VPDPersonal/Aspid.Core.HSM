@@ -21,7 +21,7 @@ namespace Aspid.Core.HSM
             }
             else
             {
-                var state = CreateStateInternal(type);
+                var state = CreateState(type);
                 
                 if (state is IChildState childState)
                 {
@@ -33,7 +33,7 @@ namespace Aspid.Core.HSM
             }
         }
 
-        protected abstract IState CreateStateInternal(Type type);
+        protected abstract IState CreateState(Type type);
 
         public abstract void Release(IState state);
     }

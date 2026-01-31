@@ -5,6 +5,6 @@ public partial class SingleplayerState : IState
 {
     public SingleplayerState()
     {
-        AddControllers(new PlayerControllerGroup());
+        AddControllers(new PlayerController());
     }
 }
