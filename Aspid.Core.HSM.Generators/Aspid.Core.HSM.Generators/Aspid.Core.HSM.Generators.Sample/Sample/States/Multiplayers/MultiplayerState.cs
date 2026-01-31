@@ -5,6 +5,18 @@ public partial class MultiplayerState : IState
 {
     public MultiplayerState()
     {
-        AddControllers(new PlayerControllerGroup());
+        AddControllers(
+            new PlayerController(),
+            new SomeUpdateController());
+    }
+
+    public void Enter()
+    {
+        // Не обязательно определять этот метод.
+    }
+
+    public void Exit()
+    {
+        // Не обязательно определять этот метод.
     }
 }

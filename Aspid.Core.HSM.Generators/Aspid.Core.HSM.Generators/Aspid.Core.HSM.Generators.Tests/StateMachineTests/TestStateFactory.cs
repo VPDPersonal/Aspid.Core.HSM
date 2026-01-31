@@ -22,7 +22,7 @@ public class TestStateFactory : StateFactory
         _stateCreators[typeof(TState)] = () => creator();
     }
 
-    protected override IState CreateStateInternal(Type type)
+    protected override IState CreateState(Type type)
     {
         return _stateCreators.TryGetValue(type, out var creator) 
             ? creator()
