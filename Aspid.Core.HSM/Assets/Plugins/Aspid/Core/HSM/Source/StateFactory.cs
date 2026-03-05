@@ -4,6 +4,20 @@ using System.Collections.Generic;
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
+    public abstract class StateFactory<TState> : StateFactory
+        where TState : IState
+    {
+        protected sealed override void OnInitializeState(IState state) =>
+            OnInitializeState((TState)state);
+        
+        protected virtual void OnInitializeState(TState state) { }
+
+        protected override void ReleaseInternal(IState state) =>
+            ReleaseInternal((TState)state);
+        
+        protected virtual void ReleaseInternal(TState state) { }
+    }
+    
     public abstract class StateFactory
     {
         private readonly HashSet<Type> _initializedStates = new();
@@ -32,7 +46,7 @@ namespace Aspid.Core.HSM
                 }
 
                 if (_initializedStates.Add(type))
-                    InitializeState(state);
+                    OnInitializeState(state);
                 
                 yield return state;
             }
@@ -40,7 +54,7 @@ namespace Aspid.Core.HSM
 
         protected abstract IState CreateStateInternal(Type type);
 
-        protected virtual void InitializeState(IState state) { }
+        protected virtual void OnInitializeState(IState state) { }
 
         public void Release(IState state)
         {
