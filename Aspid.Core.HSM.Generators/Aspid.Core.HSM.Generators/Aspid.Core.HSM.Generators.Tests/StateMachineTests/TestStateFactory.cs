@@ -22,14 +22,14 @@ public class TestStateFactory : StateFactory
         _stateCreators[typeof(TState)] = () => creator();
     }
 
-    protected override IState CreateState(Type type)
+    protected override IState CreateStateInternal(Type type)
     {
         return _stateCreators.TryGetValue(type, out var creator) 
             ? creator()
             : throw new InvalidOperationException($"State of type {type} is not registered.");
     }
 
-    public override void Release(IState state) =>
+    protected override void ReleaseInternal(IState state) =>
         _releasedStates.Add(state);
 
     public void ClearReleasedStates() =>

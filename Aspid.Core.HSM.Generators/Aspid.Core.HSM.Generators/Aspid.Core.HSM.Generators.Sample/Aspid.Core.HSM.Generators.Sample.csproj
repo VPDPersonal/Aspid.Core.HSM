@@ -6,7 +6,7 @@
         <RootNamespace>Aspid.Core.HSM.Generators.Sample</RootNamespace>
         <!--        Dont support version-->
         <!--        <UnityVersion>6000.3.0f1</UnityVersion>-->
-        <UnityVersion>6000.2.7f2</UnityVersion>
+        <UnityVersion>6000.0.64f1</UnityVersion>
     </PropertyGroup>
 
     <ItemGroup>
