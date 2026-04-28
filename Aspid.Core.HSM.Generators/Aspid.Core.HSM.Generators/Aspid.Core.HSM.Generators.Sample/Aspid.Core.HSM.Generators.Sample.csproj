@@ -50,6 +50,12 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\StateFactory.cs">
         <Link>Source\StateFactory.cs</Link>
       </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IStateHierarchy.cs">
+        <Link>Source\IStateHierarchy.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\StateTree.cs">
+        <Link>Source\StateTree.cs</Link>
+      </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IDisposableController.cs">
         <Link>Runtime\Controllers\IDisposableController.cs</Link>
       </Compile>
