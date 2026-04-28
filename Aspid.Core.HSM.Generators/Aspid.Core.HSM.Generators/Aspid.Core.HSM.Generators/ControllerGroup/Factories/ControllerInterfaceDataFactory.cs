@@ -13,54 +13,44 @@ public static class ControllerInterfaceDataFactory
 {
     public static ImmutableArray<ControllerInterfaceData> Create(in ImmutableArray<ControllerData> controllers)
     {
-        // string - interface name
-        // type - interface type
-        // indexes - controller index
-        var result = new Dictionary<string, (ITypeSymbol type, List<int> indexes)>();
-        
+        var buckets = new Dictionary<string, InterfaceBucket>();
+
         for (var i = 0; i < controllers.Length; i++)
         {
             var controllerSymbol = controllers[i].Symbol;
 
             foreach (var @interface in controllerSymbol.AllInterfaces)
             {
-                // IController is tag. Skip it.
                 if (@interface.ToDisplayString() == IController) continue;
-                
-                // If interface implemented IController interface
-                var isIController = @interface.AllInterfaces.Any(childInterface => childInterface.ToDisplayString( ) == IController);
-                if (!isIController) continue;
 
-                if (!result.TryGetValue(@interface.Name, out var tuple))
+                var derivesFromIController = @interface.AllInterfaces
+                    .Any(child => child.ToDisplayString() == IController);
+                if (!derivesFromIController) continue;
+
+                if (!buckets.TryGetValue(@interface.Name, out var bucket))
                 {
-                    tuple.indexes = [];
-                    tuple.type = @interface;
-                    
-                    result.Add(@interface.Name, tuple);
+                    bucket = new InterfaceBucket(@interface);
+                    buckets.Add(@interface.Name, bucket);
                 }
-                
-                tuple.indexes.Add(i);
+
+                bucket.Indexes.Add(i);
             }
         }
 
-        return result.Select(pair =>
+        return buckets.Values.Select(bucket =>
         {
-            var type = pair.Value.type;
-            var controllerIndexes = pair.Value.indexes.ToImmutableArray();
-
-            var methodsSymbols = type.GetMembers()
+            var methods = bucket.Type.GetMembers()
                 .OfType<IMethodSymbol>()
-                .Where(method => method.ReturnsVoid);
+                .Where(method => method.ReturnsVoid)
+                .Select(symbol =>
+                {
+                    var isReverse = symbol.HasAnyAttributeInSelf(ReverseExecuteAttribute);
+                    // TODO Aspid.Core.HSM – add async support
+                    return new ControllerInterfaceMethodData(symbol, isReverse, null);
+                })
+                .ToImmutableArray();
 
-            var methods = methodsSymbols.Select(symbol =>
-            {
-                var isReverse = symbol.HasAnyAttributeInSelf(ReverseExecuteAttribute);
-                
-                // TODO Aspid.Core.HSM – add async support
-                return new ControllerInterfaceMethodData(symbol, isReverse, null);
-            }).ToImmutableArray();
-            
-            return new ControllerInterfaceData(type, controllerIndexes, methods);
+            return new ControllerInterfaceData(bucket.Type, bucket.Indexes.ToImmutableArray(), methods);
         }).ToImmutableArray();
     }
 }

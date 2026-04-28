@@ -24,8 +24,7 @@ public static class ControllerGroupBody
         code.BeginClass(namespaceText, declarationText, baseTypes)
             .AppendBody(data)
             .EndClass(namespaceText);
-        
-        code.AppendLine($"// {data.Controllers.Length}");
+
         var sourceText = code.GetSourceText();
         var fileName = declarationText.GetFileName(namespaceText, "State");
         
@@ -104,12 +103,12 @@ public static class ControllerGroupBody
         {
             code.AppendMultiline(
                     $"""
-                     [{GeneratedCodeAttribute}("GameModesGenerator.StateGenerator.ControllerGroupGenerator", "0.0.1")]
+                     [{GeneratedCodeAttribute}("Aspid.Core.HSM.Generators.ControllerGroupGenerator", "0.0.1")]
                      private void AddControllers(params {IController}[] controllers) =>
                          throw new global::System.NotImplementedException("No suitable code replacement generated, this is either due to generators failing, or lack of support in your current context");
                      """)
                 .AppendLine()
-                .AppendLine($"[{GeneratedCodeAttribute}(\"GameModesGenerator.StateGenerator.ControllerGroupGenerator\", \"0.0.1\")]")
+                .AppendLine($"[{GeneratedCodeAttribute}(\"Aspid.Core.HSM.Generators.ControllerGroupGenerator\", \"0.0.1\")]")
                 .AppendLine("private void AddControllers(");
 
             for (var i = 0; i < data.Controllers.Length; i++)
@@ -150,26 +149,27 @@ public static class ControllerGroupBody
                 
                     code.AppendMultiline(
                             $"""
-                             [{GeneratedCodeAttribute}("GameModesGenerator.StateGenerator.ControllerGroupGenerator", "0.0.1")]
+                             [{GeneratedCodeAttribute}("Aspid.Core.HSM.Generators.ControllerGroupGenerator", "0.0.1")]
                              void {interfaceData.TypeSymbol.ToDisplayStringGlobal()}.{methodSymbol.Name}({methodParameters})
                              """)
                         .BeginBlock()
                         .AppendLine($"using ({GetMarkerNameForMethod(methodSymbol.Name)}.Auto())")
                         .BeginBlock();
 
-                    var indexes = method.IsReverse
-                        ? interfaceData.ControllerIndexes.Reverse()
-                        : interfaceData.ControllerIndexes;
-                
-                    foreach (var index in indexes)
+                    var controllerIndexes = interfaceData.ControllerIndexes;
+                    var count = controllerIndexes.Length;
+                    for (var step = 0; step < count; step++)
                     {
-                        code.AppendMultiline(
-                            $"""
-                             using ({GetMarkerNameForController(index)}.Auto());
-                                 (({interfaceData.TypeSymbol.ToDisplayStringGlobal()})__controller{index}).{methodSymbol.Name}({methodParameterNames});
-                             """);
-                    }   
-                
+                        var index = method.IsReverse
+                            ? controllerIndexes[count - 1 - step]
+                            : controllerIndexes[step];
+
+                        code.AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
+                            .BeginBlock()
+                            .AppendLine($"(({interfaceData.TypeSymbol.ToDisplayStringGlobal()})__controller{index}).{methodSymbol.Name}({methodParameterNames});")
+                            .EndBlock();
+                    }
+
                     code.EndBlock()
                         .EndBlock()
                         .AppendLine();

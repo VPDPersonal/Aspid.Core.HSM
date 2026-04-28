@@ -1,13 +1,14 @@
+using System;
 using System.Collections.Generic;
 
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
-    public class StateMachineBase : IStateMachine
+    public class StateMachineBase : IStateMachine, IDisposable
     {
         private readonly StateFactory _stateFactory;
         private readonly List<IState> _currentStates = new(capacity: 1);
-        
+
         public IReadOnlyList<IState> CurrentStates => _currentStates;
 
         public StateMachineBase(StateFactory stateFactory)
@@ -22,13 +23,13 @@ namespace Aspid.Core.HSM
             foreach (var state in _currentStates)
                 state.GetController<IUpdateController>()?.Update(deltaTime);
         }
-        
+
         protected void LateUpdate(float deltaTime)
         {
             foreach (var state in _currentStates)
                 state.GetController<ILateUpdateController>()?.LateUpdate(deltaTime);
         }
-        
+
         protected void FixedUpdate(float deltaTime)
         {
             foreach (var state in _currentStates)
@@ -42,31 +43,18 @@ namespace Aspid.Core.HSM
         {
             OnChangingState();
             {
-                var index = 0;
+                var newChain = _stateFactory.CreateState<TState>(_currentStates);
+                var divergeIndex = FindDivergeIndex(newChain);
 
-                foreach (var state in _stateFactory.CreateState<TState>(_currentStates))
+                for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
                 {
-                    if (index > -1)
-                    {
-                        if (index < _currentStates.Count && state == _currentStates[index])
-                        {
-                            index++;
-                            continue;
-                        }
-                        
-                        var count = _currentStates.Count - index;
+                    ExitState(_currentStates[i]);
+                    _currentStates.RemoveAt(i);
+                }
 
-                        for (var i = 0; i < count; i++)
-                        {
-                            var lastIndex = _currentStates.Count - 1;
-                            
-                            ExitState(_currentStates[lastIndex]);
-                            _currentStates.RemoveAt(lastIndex);
-                        }
-
-                        index = -1;
-                    }
-                    
+                for (var i = divergeIndex; i < newChain.Count; i++)
+                {
+                    var state = newChain[i];
                     _currentStates.Add(state);
                     EnterState(state);
                 }
@@ -74,8 +62,20 @@ namespace Aspid.Core.HSM
             OnChangedState();
         }
 
+        private int FindDivergeIndex(IReadOnlyList<IState> newChain)
+        {
+            var commonLength = Math.Min(_currentStates.Count, newChain.Count);
+            for (var i = 0; i < commonLength; i++)
+            {
+                if (!ReferenceEquals(_currentStates[i], newChain[i]))
+                    return i;
+            }
+
+            return commonLength;
+        }
+
         protected virtual void OnChangingState() { }
-        
+
         protected virtual void OnChangedState() { }
         #endregion
 
@@ -88,12 +88,12 @@ namespace Aspid.Core.HSM
                 state.Exit();
             }
             OnExitedState(state);
-            
+
             _stateFactory.Release(state);
         }
-        
+
         protected virtual void OnExitingState(IState state) { }
-        
+
         protected virtual void OnExitedState(IState state) { }
         #endregion
 
@@ -102,31 +102,32 @@ namespace Aspid.Core.HSM
         {
             OnEnteringState(state);
             {
+                _stateFactory.MarkInitialized(state);
                 state.Enter();
                 state.GetController<IEnterController>()?.OnEnter();
             }
             OnEnteredState(state);
         }
-        
+
         protected virtual void OnEnteringState(IState state) { }
-        
+
         protected virtual void OnEnteredState(IState state) { }
         #endregion
 
         #region Dispose
         public void Dispose()
         {
-            Disposed();
+            Disposing();
             {
                 foreach (var state in _currentStates)
                     state.GetController<IDisposableController>()?.Dispose();
             }
-            Disposing();
+            Disposed();
         }
 
-        protected virtual void Disposed() { }
-
         protected virtual void Disposing() { }
+
+        protected virtual void Disposed() { }
         #endregion
     }
 }
