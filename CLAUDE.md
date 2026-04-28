@@ -21,7 +21,7 @@ dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core
 dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core.HSM.Generators.Tests.csproj --filter FullyQualifiedName~StateMachineBaseTests
 ```
 
-After modifying the generator, the produced DLL must be copied to `Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/Aspid.Core.HSM.Generators.dll` for the Unity project to pick up changes (recent commit `70abeec` was this kind of rebuild). The Unity project itself is built/run from the Unity Editor, not the CLI.
+After modifying the generator, just run `dotnet build` — the `CopyGeneratorToUnityPackage` target in `Aspid.Core.HSM.Generators/.../Directory.Build.targets` (`AfterTargets="Build"`) drops the DLL into `Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/`. Do not copy by hand and do not add a hook for this. The Unity project itself is built/run from the Unity Editor, not the CLI.
 
 ## HSM architecture
 
@@ -45,3 +45,10 @@ Two incremental generators live in `Aspid.Core.HSM.Generators/`:
 Each generator is split into `Data/` (incremental record), `Factories/` (build the record from `SemanticModel` + `ClassDeclarationSyntax`), and `Bodies/` (emit source). `Descriptions/HsmClasses.cs` and `HsmNamespaces.cs` centralize the framework type names that the generators reference — update these when renaming public attributes/types in the runtime.
 
 When adding a state, mark it `partial`, apply `[ParentState(typeof(...))]` (or `[ParentState(null)]` for root), and the `IChildState` implementation is generated. See `Aspid.Core.HSM/Assets/_Scripts/States/RootState.cs` and `SinglePlayerState.cs` for the canonical pattern, and `Aspid.Core.HSM.Generators.Sample/Sample/` for `[ControllerGroup]` usage.
+
+## Claude Code setup
+
+- `.claude/settings.json` blocks `Edit`/`Write` on `*.meta` (Unity-managed) and `Aspid.Core.HSM.Generators.dll` (build artifact) via `PreToolUse`. Don't try to bypass — fix the source instead.
+- `.claude/skills/rebuild-generator` — user-invoked rebuild; copy is automatic via `Directory.Build.targets`.
+- `.claude/skills/gen-snapshot-test` — template for `CSharpSourceGeneratorTest<TGenerator, XUnitVerifier>` tests under `Aspid.Core.HSM.Generators.Tests/`.
+- `.mcp.json` ships `context7` (Roslyn/Unity docs) and `github` (needs `GITHUB_PERSONAL_ACCESS_TOKEN`).
