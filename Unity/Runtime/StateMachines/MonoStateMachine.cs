@@ -7,12 +7,13 @@ namespace Aspid.Core.HSM
 {
     public class MonoStateMachine : MonoBehaviour, IStateMachine, IDisposable
     {
-        private StateFactory _stateFactory;
-        private readonly List<IState> _currentStates = new(capacity: 1);
+        private static readonly IReadOnlyList<IState> EmptyStates = Array.Empty<IState>();
 
-        public bool IsInitialized => _stateFactory is not null;
-        
-        public IReadOnlyList<IState> CurrentStates => _currentStates;
+        private MonoStateMachineCore? _stateMachine;
+
+        public bool IsInitialized => _stateMachine is not null;
+
+        public IReadOnlyList<IState> CurrentStates => _stateMachine?.CurrentStates ?? EmptyStates;
 
         #region Initialize
         public void Initialize(StateFactory stateFactory)
@@ -21,156 +22,90 @@ namespace Aspid.Core.HSM
 
             OnInitializing();
             {
-                _stateFactory = stateFactory;
-                _currentStates.Add(new EmptyState());
+                _stateMachine = new MonoStateMachineCore(this, stateFactory);
             }
             OnInitialized();
         }
 
-        protected virtual void OnInitialized() { }
-        
         protected virtual void OnInitializing() { }
+
+        protected virtual void OnInitialized() { }
         #endregion
+
+        public void ChangeState<TState>() where TState : IState =>
+            _stateMachine!.ChangeState<TState>();
 
         #region Update
         private void Update()
         {
+            if (_stateMachine is null) return;
+
             OnUpdating();
-            {
-                foreach (var state in _currentStates)
-                    state.GetController<IUpdateController>()?.Update(Time.deltaTime);
-            }
+            _stateMachine.InvokeUpdate(Time.deltaTime);
             OnUpdated();
         }
-        
-        protected virtual void OnUpdating() { }
-        
-        protected virtual void OnUpdated() { }
-        #endregion
 
-        #region LateUpdate
         private void LateUpdate()
         {
+            if (_stateMachine is null) return;
+
             OnLateUpdating();
-            {
-                foreach (var state in _currentStates)
-                    state.GetController<ILateUpdateController>()?.LateUpdate(Time.deltaTime);
-            }
+            _stateMachine.InvokeLateUpdate(Time.deltaTime);
             OnLateUpdated();
         }
-        
-        protected virtual void OnLateUpdating() { }
-        
-        protected virtual void OnLateUpdated() { }
-        #endregion
 
-        #region FixedUpdate
         private void FixedUpdate()
         {
+            if (_stateMachine is null) return;
+
             OnFixedUpdating();
-            {
-                foreach (var state in _currentStates)
-                    state.GetController<IFixedUpdateController>()?.FixedUpdate(Time.fixedDeltaTime);
-            }
+            _stateMachine.InvokeFixedUpdate(Time.fixedDeltaTime);
             OnFixedUpdated();
         }
-        
+
+        protected virtual void OnUpdating() { }
+
+        protected virtual void OnUpdated() { }
+
+        protected virtual void OnLateUpdating() { }
+
+        protected virtual void OnLateUpdated() { }
+
         protected virtual void OnFixedUpdating() { }
-        
+
         protected virtual void OnFixedUpdated() { }
         #endregion
 
-        #region ChangeState
-        public void ChangeState<TState>()
-            where TState : IState
-        {
-            OnChangingState();
-            {
-                var index = 0;
-
-                foreach (var state in _stateFactory.CreateState<TState>(_currentStates))
-                {
-                    if (index > -1)
-                    {
-                        if (index < _currentStates.Count && state == _currentStates[index])
-                        {
-                            index++;
-                            continue;
-                        }
-                        
-                        var count = _currentStates.Count - index;
-
-                        for (var i = 0; i < count; i++)
-                        {
-                            var lastIndex = _currentStates.Count - 1;
-                            
-                            ExitState(_currentStates[lastIndex]);
-                            _currentStates.RemoveAt(lastIndex);
-                        }
-
-                        index = -1;
-                    }
-                    
-                    _currentStates.Add(state);
-                    EnterState(state);
-                }
-            }
-            OnChangedState();
-        }
-
+        #region ChangeState hooks
         protected virtual void OnChangingState() { }
-        
-        protected virtual void OnChangedState() { }
-        #endregion
 
-        #region Exit
-        private void ExitState(IState state)
-        {
-            OnExitingState(state);
-            {
-                state.GetController<IExitController>()?.OnExit();
-                state.Exit();
-            }
-            OnExitedState(state);
-            
-            _stateFactory.Release(state);
-        }
-        
+        protected virtual void OnChangedState() { }
+
+        protected virtual void OnEnteringState(IState state) { }
+
+        protected virtual void OnEnteredState(IState state) { }
+
         protected virtual void OnExitingState(IState state) { }
-        
+
         protected virtual void OnExitedState(IState state) { }
         #endregion
 
-        #region Enter
-        private void EnterState(IState state)
-        {
-            OnEnteringState(state);
-            {
-                state.Enter();
-                state.GetController<IEnterController>()?.OnEnter();
-            }
-            OnEnteredState(state);
-        }
-        
-        protected virtual void OnEnteringState(IState state) { }
-        
-        protected virtual void OnEnteredState(IState state) { }
-        #endregion
-        
         #region Dispose
-        public void Dispose()
-        {
-            Disposed();
-            {
-                foreach (var state in _currentStates)
-                    state.GetController<IDisposableController>()?.Dispose();
-            }
-            Disposing();
-        }
+        public void Dispose() =>
+            _stateMachine?.Dispose();
+
+        protected virtual void Disposing() { }
 
         protected virtual void Disposed() { }
-        
-        protected virtual void Disposing() { }
         #endregion
+
+        internal void RaiseChangingState() => OnChangingState();
+        internal void RaiseChangedState() => OnChangedState();
+        internal void RaiseEnteringState(IState state) => OnEnteringState(state);
+        internal void RaiseEnteredState(IState state) => OnEnteredState(state);
+        internal void RaiseExitingState(IState state) => OnExitingState(state);
+        internal void RaiseExitedState(IState state) => OnExitedState(state);
+        internal void RaiseDisposing() => Disposing();
+        internal void RaiseDisposed() => Disposed();
     }
 }
