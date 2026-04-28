@@ -1,0 +1,14 @@
+<Project>
+
+    <PropertyGroup>
+        <UnityHsmPluginPath>$(MSBuildThisFileDirectory)..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\</UnityHsmPluginPath>
+    </PropertyGroup>
+
+    <Target Name="CopyGeneratorToUnityPackage" AfterTargets="Build" Condition="Exists('$(UnityHsmPluginPath)')">
+        <Copy SourceFiles="$(TargetPath)"
+              DestinationFolder="$(UnityHsmPluginPath)"
+              SkipUnchangedFiles="true"
+              OverwriteReadOnlyFiles="true" />
+    </Target>
+
+</Project>
