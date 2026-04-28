@@ -8,6 +8,14 @@ namespace Aspid.Core.HSM
     {
         private readonly HashSet<Type> _initializedStates = new();
         private readonly List<IState> _chainBuffer = new(capacity: 4);
+        private readonly IStateHierarchy? _hierarchy;
+
+        protected StateFactory() { }
+
+        protected StateFactory(IStateHierarchy hierarchy)
+        {
+            _hierarchy = hierarchy;
+        }
 
         public IReadOnlyList<IState> CreateState<TState>(IReadOnlyList<IState> activeStates)
             where TState : IState
@@ -23,6 +31,15 @@ namespace Aspid.Core.HSM
             {
                 for (var i = 0; i <= index; i++)
                     _chainBuffer.Add(activeStates[i]);
+                return;
+            }
+
+            if (_hierarchy != null)
+            {
+                if (_hierarchy.TryGetParent(type, out var parentType))
+                    BuildChain(parentType, activeStates, index - 1);
+
+                _chainBuffer.Add(CreateStateInternal(type));
                 return;
             }
 
@@ -58,6 +75,10 @@ namespace Aspid.Core.HSM
     public abstract class StateFactory<TState> : StateFactory
         where TState : IState
     {
+        protected StateFactory() { }
+
+        protected StateFactory(IStateHierarchy hierarchy) : base(hierarchy) { }
+
         protected sealed override void OnInitializeState(IState state) =>
             OnInitializeState((TState)state);
 
