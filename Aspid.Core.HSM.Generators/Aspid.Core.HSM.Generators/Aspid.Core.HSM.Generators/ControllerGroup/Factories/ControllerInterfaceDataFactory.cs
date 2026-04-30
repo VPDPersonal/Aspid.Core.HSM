@@ -27,30 +27,68 @@ public static class ControllerInterfaceDataFactory
                     .Any(child => child.ToDisplayString() == IController);
                 if (!derivesFromIController) continue;
 
-                if (!buckets.TryGetValue(@interface.Name, out var bucket))
+                var (syncIface, asyncIface) = ResolveSyncAsyncPair(@interface);
+                var key = syncIface.ToDisplayString();
+
+                if (!buckets.TryGetValue(key, out var bucket))
                 {
-                    bucket = new InterfaceBucket(@interface);
-                    buckets.Add(@interface.Name, bucket);
+                    bucket = new InterfaceBucket(syncIface);
+                    buckets.Add(key, bucket);
                 }
 
-                bucket.Indexes.Add(i);
+                if (asyncIface is not null)
+                    bucket.AsyncType ??= asyncIface;
+
+                bucket.Entries.Add((i, asyncIface is not null));
             }
         }
 
         return buckets.Values.Select(bucket =>
         {
-            var methods = bucket.Type.GetMembers()
+            var asyncMethods = bucket.AsyncType?.GetMembers().OfType<IMethodSymbol>()
+                .Where(m => m.MethodKind == MethodKind.Ordinary)
+                .ToArray();
+
+            var methods = bucket.SyncType.GetMembers()
                 .OfType<IMethodSymbol>()
                 .Where(method => method.ReturnsVoid)
                 .Select(symbol =>
                 {
                     var isReverse = symbol.HasAnyAttributeInSelf(ReverseExecuteAttribute);
-                    // TODO Aspid.Core.HSM – add async support
-                    return new ControllerInterfaceMethodData(symbol, isReverse, null);
+                    AsyncMethodData? asyncData = null;
+                    if (asyncMethods is { Length: > 0 })
+                    {
+                        var asyncSym = asyncMethods.FirstOrDefault();
+                        if (asyncSym is not null)
+                        {
+                            asyncData = new AsyncMethodData(asyncSym);
+                            if (asyncSym.HasAnyAttributeInSelf(ReverseExecuteAttribute))
+                                isReverse = true;
+                        }
+                    }
+                    return new ControllerInterfaceMethodData(symbol, isReverse, asyncData);
                 })
                 .ToImmutableArray();
 
-            return new ControllerInterfaceData(bucket.Type, bucket.Indexes.ToImmutableArray(), methods);
+            var indexes = bucket.Entries.Select(e => e.Index).ToImmutableArray();
+            var asyncFlags = bucket.Entries.Select(e => e.IsAsync).ToImmutableArray();
+
+            return new ControllerInterfaceData(bucket.SyncType, bucket.AsyncType, indexes, asyncFlags, methods);
         }).ToImmutableArray();
+    }
+
+    private static (ITypeSymbol SyncIface, ITypeSymbol? AsyncIface) ResolveSyncAsyncPair(INamedTypeSymbol @interface)
+    {
+        var asyncOf = @interface.GetAttributes()
+            .FirstOrDefault(attr => attr.AttributeClass is { } cls
+                && cls.ToDisplayString() == AsyncOfAttribute);
+
+        if (asyncOf is null || asyncOf.ConstructorArguments.Length == 0)
+            return (@interface, null);
+
+        if (asyncOf.ConstructorArguments[0].Value is ITypeSymbol syncIface)
+            return (syncIface, @interface);
+
+        return (@interface, null);
     }
 }

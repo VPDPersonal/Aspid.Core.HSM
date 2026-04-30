@@ -3,8 +3,9 @@ using System.Collections.Generic;
 
 namespace Aspid.Core.HSM.Generators.ControllerGroup.Factories;
 
-internal sealed class InterfaceBucket(ITypeSymbol type)
+internal sealed class InterfaceBucket(ITypeSymbol syncType)
 {
-    public readonly ITypeSymbol Type = type;
-    public readonly List<int> Indexes = [];
+    public readonly ITypeSymbol SyncType = syncType;
+    public ITypeSymbol? AsyncType;
+    public readonly List<(int Index, bool IsAsync)> Entries = [];
 }

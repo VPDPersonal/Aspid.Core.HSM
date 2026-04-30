@@ -1,6 +1,8 @@
+using Microsoft.CodeAnalysis;
+
 namespace Aspid.Core.HSM.Generators.ControllerGroup.Data.Interfaces;
 
-public readonly struct AsyncMethodData(bool isWait)
+public readonly struct AsyncMethodData(IMethodSymbol asyncSymbol)
 {
-    public readonly bool IsWait = isWait;
+    public readonly IMethodSymbol AsyncSymbol = asyncSymbol;
 }

@@ -17,6 +17,7 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
+        <PackageReference Include="UniTask" Version="2.5.10"/>
     </ItemGroup>
 
     <ItemGroup>
@@ -67,8 +68,23 @@
         <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.cs">
             <Link>Runtime\StateMachines\StateMachineBase.cs</Link>
         </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Async.cs">
+            <Link>Runtime\StateMachines\StateMachineBase.Async.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IAsyncEnterController.cs">
+            <Link>Runtime\Controllers\IAsyncEnterController.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IAsyncExitController.cs">
+            <Link>Runtime\Controllers\IAsyncExitController.cs</Link>
+        </Compile>
         <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ReverseExecuteAttribute.cs">
             <Link>Source\Generation\ReverseExecuteAttribute.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncOfAttribute.cs">
+            <Link>Source\Generation\AsyncOfAttribute.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ControllerGroupAttribute.cs">
+            <Link>Source\Generation\ControllerGroupAttribute.cs</Link>
         </Compile>
     </ItemGroup>
 

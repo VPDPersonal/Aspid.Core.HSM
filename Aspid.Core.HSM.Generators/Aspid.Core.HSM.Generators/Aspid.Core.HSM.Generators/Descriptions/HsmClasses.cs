@@ -10,4 +10,5 @@ public static class HsmClasses
     public static readonly AttributeText ReverseExecuteAttribute = new(nameof(ReverseExecuteAttribute), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly AttributeText ControllerGroupAttribute = new(nameof(ControllerGroupAttribute), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly AttributeText ParentStateAttribute = new(nameof(ParentStateAttribute), namespaceText: HsmNamespaces.Aspid_Core_HSM);
+    public static readonly AttributeText AsyncOfAttribute = new(nameof(AsyncOfAttribute), namespaceText: HsmNamespaces.Aspid_Core_HSM);
 }

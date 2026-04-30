@@ -2,7 +2,8 @@
     "name": "Aspid.Core.HSM.Unity",
     "rootNamespace": "",
     "references": [
-        "GUID:ee9f6c02ffd2044558d5420383af3dc8"
+        "GUID:ee9f6c02ffd2044558d5420383af3dc8",
+        "UniTask"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

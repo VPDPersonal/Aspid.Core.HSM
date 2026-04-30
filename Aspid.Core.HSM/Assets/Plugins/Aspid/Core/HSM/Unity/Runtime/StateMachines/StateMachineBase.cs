@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
-    public class StateMachineBase : IStateMachine, IDisposable
+    public partial class StateMachineBase : IStateMachine, IDisposable
     {
         private readonly StateFactory _stateFactory;
         private readonly List<IState> _currentStates = new(capacity: 1);
+
+        private CancellationTokenSource? _activeTransitionCts;
 
         public IReadOnlyList<IState> CurrentStates => _currentStates;
 
@@ -41,6 +44,10 @@ namespace Aspid.Core.HSM
         public void ChangeState<TState>()
             where TState : IState
         {
+            if (_activeTransitionCts is not null)
+                throw new InvalidOperationException(
+                    "An asynchronous transition is in progress. Use ChangeStateAsync or wait for it to complete.");
+
             OnChangingState();
             {
                 var newChain = _stateFactory.CreateState<TState>(_currentStates);
