@@ -8,10 +8,6 @@ public class TestStateFactory : StateFactory
     private readonly List<IState> _releasedStates = [];
     private readonly Dictionary<Type, Func<IState>> _stateCreators = new();
 
-    public TestStateFactory() { }
-
-    public TestStateFactory(IStateHierarchy hierarchy) : base(hierarchy) { }
-
     public IReadOnlyList<IState> ReleasedStates => _releasedStates;
 
     public void RegisterState<TState>()
