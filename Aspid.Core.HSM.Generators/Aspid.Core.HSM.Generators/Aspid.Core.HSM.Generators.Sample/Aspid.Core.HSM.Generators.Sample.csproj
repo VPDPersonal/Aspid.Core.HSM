@@ -71,6 +71,9 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\MonoStateMachine.cs">
         <Link>Runtime\StateMachines\MonoStateMachine.cs</Link>
       </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\MonoStateMachineCore.cs">
+        <Link>Runtime\StateMachines\MonoStateMachineCore.cs</Link>
+      </Compile>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.cs">
         <Link>Runtime\StateMachines\StateMachineBase.cs</Link>
       </Compile>

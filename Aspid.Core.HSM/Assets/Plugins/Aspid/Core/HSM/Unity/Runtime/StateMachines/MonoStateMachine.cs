@@ -5,7 +5,7 @@ using System.Collections.Generic;
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
-    public class MonoStateMachine : MonoBehaviour, IStateMachine, IDisposable
+    public partial class MonoStateMachine : MonoBehaviour, IStateMachine, IDisposable
     {
         private static readonly IReadOnlyList<IState> EmptyStates = Array.Empty<IState>();
 

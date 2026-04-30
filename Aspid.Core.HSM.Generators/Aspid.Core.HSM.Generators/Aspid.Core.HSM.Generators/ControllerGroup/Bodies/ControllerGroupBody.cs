@@ -2,6 +2,7 @@ using System.Linq;
 using Microsoft.CodeAnalysis;
 using Aspid.Generators.Helper;
 using Aspid.Core.HSM.Generators.ControllerGroup.Data;
+using Aspid.Core.HSM.Generators.ControllerGroup.Data.Interfaces;
 using static Aspid.Generators.Helper.Classes;
 using static Aspid.Generators.Helper.Unity.UnityClasses;
 using static Aspid.Core.HSM.Generators.Descriptions.HsmClasses;
@@ -18,16 +19,16 @@ public static class ControllerGroupBody
     {
         var code = new CodeWriter();
         var baseTypes = data.ControllerInterfaces
-            .Select(data => data.TypeSymbol.ToDisplayStringGlobal())
+            .Select(d => (d.AsyncTypeSymbol ?? d.TypeSymbol).ToDisplayStringGlobal())
             .ToArray();
-        
+
         code.BeginClass(namespaceText, declarationText, baseTypes)
             .AppendBody(data)
             .EndClass(namespaceText);
 
         var sourceText = code.GetSourceText();
         var fileName = declarationText.GetFileName(namespaceText, "State");
-        
+
         context.AddSource(fileName, sourceText);
     }
 
@@ -55,7 +56,7 @@ public static class ControllerGroupBody
                     $"""
                      [{EditorBrowsableAttribute}({EditorBrowsableState}.Never)]
                      [{GeneratedCodeAttribute}("Aspid.Core.HSM.Generators.ControllerGroupGenerator", "0.0.1")]
-                     private {controller.Symbol.ToDisplayStringGlobal()} __controller{i}; 
+                     private {controller.Symbol.ToDisplayStringGlobal()} __controller{i};
                      """);
             }
 
@@ -68,26 +69,29 @@ public static class ControllerGroupBody
 
             foreach (var controllerInterface in data.ControllerInterfaces)
             {
-                foreach (var methodName in controllerInterface.Methods.Select(method => method.Symbol.Name))
+                foreach (var method in controllerInterface.Methods)
                 {
-                    var markerName = GetMarkerNameForMethod(methodName);
-                
+                    var emittedMethodName = method.AsyncMethod is { } async
+                        ? async.AsyncSymbol.Name
+                        : method.Symbol.Name;
+                    var markerName = GetMarkerNameForMethod(method.Symbol.Name);
+
                     code.AppendMultiline(
                         $"""
                          [{EditorBrowsableAttribute}({EditorBrowsableState}.Never)]
                          [{GeneratedCodeAttribute}("Aspid.Core.HSM.Generators.ControllerGroupGenerator", "0.0.1")]
-                         private readonly static {ProfilerMarker} {markerName} = new("{className}.{methodName}");
+                         private readonly static {ProfilerMarker} {markerName} = new("{className}.{emittedMethodName}");
                          """);
                 }
             }
-        
+
             code.AppendLine();
 
             for (var i = 0; i < data.Controllers.Length; i++)
             {
                 var markerName = GetMarkerNameForController(i);
                 var controllerName = data.Controllers[i].Symbol.Name;
-                
+
                 code.AppendMultiline(
                     $"""
                      [{EditorBrowsableAttribute}({EditorBrowsableState}.Never)]
@@ -118,15 +122,15 @@ public static class ControllerGroupBody
                 if (i > 0) code.AppendLine(",");
                 code.Append($"\t{controller.Symbol.ToDisplayStringGlobal()} controller{i}");
             }
-        
+
             code.AppendLine(")")
                 .BeginBlock();
-        
+
             for (var i = 0; i < data.Controllers.Length; i++)
             {
                 code.AppendLine($"__controller{i} = controller{i};");
             }
-        
+
             code.EndBlock();
             return code;
         }
@@ -135,48 +139,107 @@ public static class ControllerGroupBody
         {
             foreach (var interfaceData in data.ControllerInterfaces)
             {
-                foreach (var method in interfaceData.Methods.Where(method => method.Symbol.ReturnsVoid))
+                foreach (var method in interfaceData.Methods.Where(m => m.Symbol.ReturnsVoid))
                 {
-                    var methodSymbol = method.Symbol;
-                
-                    var methodParameterNames = string.Join(
-                        ",",
-                        methodSymbol.Parameters.Select(methodParameter => methodParameter.Name));
-                
-                    var methodParameters = string.Join(
-                        ",",
-                        methodSymbol.Parameters.Select(methodParameter => $"{methodParameter.Type.ToDisplayStringGlobal()} {methodParameter.Name}"));
-                
-                    code.AppendMultiline(
-                            $"""
-                             [{GeneratedCodeAttribute}("Aspid.Core.HSM.Generators.ControllerGroupGenerator", "0.0.1")]
-                             void {interfaceData.TypeSymbol.ToDisplayStringGlobal()}.{methodSymbol.Name}({methodParameters})
-                             """)
-                        .BeginBlock()
-                        .AppendLine($"using ({GetMarkerNameForMethod(methodSymbol.Name)}.Auto())")
-                        .BeginBlock();
+                    if (method.AsyncMethod is { } asyncMethod)
+                        code.AppendAsyncInterfaceMethod(in interfaceData, in method, asyncMethod);
+                    else
+                        code.AppendSyncInterfaceMethod(in interfaceData, in method);
 
-                    var controllerIndexes = interfaceData.ControllerIndexes;
-                    var count = controllerIndexes.Length;
-                    for (var step = 0; step < count; step++)
-                    {
-                        var index = method.IsReverse
-                            ? controllerIndexes[count - 1 - step]
-                            : controllerIndexes[step];
-
-                        code.AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
-                            .BeginBlock()
-                            .AppendLine($"(({interfaceData.TypeSymbol.ToDisplayStringGlobal()})__controller{index}).{methodSymbol.Name}({methodParameterNames});")
-                            .EndBlock();
-                    }
-
-                    code.EndBlock()
-                        .EndBlock()
-                        .AppendLine();
+                    code.AppendLine();
                 }
             }
-        
+
             return code;
+        }
+
+        private CodeWriter AppendSyncInterfaceMethod(
+            in ControllerInterfaceData interfaceData,
+            in ControllerInterfaceMethodData method)
+        {
+            var methodSymbol = method.Symbol;
+            var ifaceName = interfaceData.TypeSymbol.ToDisplayStringGlobal();
+
+            var parameterDecls = string.Join(",",
+                methodSymbol.Parameters.Select(p => $"{p.Type.ToDisplayStringGlobal()} {p.Name}"));
+            var parameterArgs = string.Join(",",
+                methodSymbol.Parameters.Select(p => p.Name));
+
+            code.AppendMultiline(
+                    $"""
+                     [{GeneratedCodeAttribute}("Aspid.Core.HSM.Generators.ControllerGroupGenerator", "0.0.1")]
+                     void {ifaceName}.{methodSymbol.Name}({parameterDecls})
+                     """)
+                .BeginBlock()
+                .AppendLine($"using ({GetMarkerNameForMethod(methodSymbol.Name)}.Auto())")
+                .BeginBlock();
+
+            var indexes = interfaceData.ControllerIndexes;
+            for (var step = 0; step < indexes.Length; step++)
+            {
+                var index = method.IsReverse
+                    ? indexes[indexes.Length - 1 - step]
+                    : indexes[step];
+
+                code.AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
+                    .BeginBlock()
+                    .AppendLine($"(({ifaceName})__controller{index}).{methodSymbol.Name}({parameterArgs});")
+                    .EndBlock();
+            }
+
+            return code.EndBlock().EndBlock();
+        }
+
+        private CodeWriter AppendAsyncInterfaceMethod(
+            in ControllerInterfaceData interfaceData,
+            in ControllerInterfaceMethodData method,
+            AsyncMethodData asyncMethod)
+        {
+            var asyncSymbol = asyncMethod.AsyncSymbol;
+            var asyncIfaceName = interfaceData.AsyncTypeSymbol!.ToDisplayStringGlobal();
+            var syncIfaceName = interfaceData.TypeSymbol.ToDisplayStringGlobal();
+            var returnType = asyncSymbol.ReturnType.ToDisplayStringGlobal();
+
+            var parameterDecls = string.Join(",",
+                asyncSymbol.Parameters.Select(p => $"{p.Type.ToDisplayStringGlobal()} {p.Name}"));
+            var parameterArgs = string.Join(",",
+                asyncSymbol.Parameters.Select(p => p.Name));
+
+            code.AppendMultiline(
+                    $"""
+                     [{GeneratedCodeAttribute}("Aspid.Core.HSM.Generators.ControllerGroupGenerator", "0.0.1")]
+                     async {returnType} {asyncIfaceName}.{asyncSymbol.Name}({parameterDecls})
+                     """)
+                .BeginBlock()
+                .AppendLine($"using ({GetMarkerNameForMethod(method.Symbol.Name)}.Auto())")
+                .BeginBlock();
+
+            var indexes = interfaceData.ControllerIndexes;
+            var isAsyncFlags = interfaceData.ControllerIsAsync;
+            for (var step = 0; step < indexes.Length; step++)
+            {
+                var pos = method.IsReverse ? indexes.Length - 1 - step : step;
+                var index = indexes[pos];
+                var isAsync = isAsyncFlags[pos];
+
+                code.AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
+                    .BeginBlock();
+
+                if (isAsync)
+                {
+                    code.AppendLine(
+                        $"await (({asyncIfaceName})__controller{index}).{asyncSymbol.Name}({parameterArgs});");
+                }
+                else
+                {
+                    code.AppendLine(
+                        $"(({syncIfaceName})__controller{index}).{method.Symbol.Name}();");
+                }
+
+                code.EndBlock();
+            }
+
+            return code.EndBlock().EndBlock();
         }
     }
 
