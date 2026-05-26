@@ -77,10 +77,41 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.cs">
         <Link>Runtime\StateMachines\StateMachineBase.cs</Link>
       </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Async.cs">
+        <Link>Runtime\StateMachines\StateMachineBase.Async.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Transitions.cs">
+        <Link>Runtime\StateMachines\StateMachineBase.Transitions.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\MonoStateMachine.Async.cs">
+        <Link>Runtime\StateMachines\MonoStateMachine.Async.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IAsyncEnterController.cs">
+        <Link>Runtime\Controllers\IAsyncEnterController.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IAsyncExitController.cs">
+        <Link>Runtime\Controllers\IAsyncExitController.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\ITransition.cs">
+        <Link>Source\ITransition.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncModeAttribute.cs">
+        <Link>Source\Generation\AsyncModeAttribute.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncExecutionMode.cs">
+        <Link>Source\Generation\AsyncExecutionMode.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncOfAttribute.cs">
+        <Link>Source\Generation\AsyncOfAttribute.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\TransitionAttribute.cs">
+        <Link>Source\Generation\TransitionAttribute.cs</Link>
+      </Compile>
     </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="Unity3D" Version="3.1.1" />
+      <PackageReference Include="UniTask" Version="2.5.10" />
     </ItemGroup>
 
 </Project>

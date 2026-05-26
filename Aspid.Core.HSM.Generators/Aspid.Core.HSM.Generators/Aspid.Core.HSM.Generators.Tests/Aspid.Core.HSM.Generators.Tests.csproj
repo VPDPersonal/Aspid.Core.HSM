@@ -77,6 +77,12 @@
         <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IAsyncExitController.cs">
             <Link>Runtime\Controllers\IAsyncExitController.cs</Link>
         </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\ITransition.cs">
+            <Link>Source\ITransition.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Transitions.cs">
+            <Link>Runtime\StateMachines\StateMachineBase.Transitions.cs</Link>
+        </Compile>
         <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ReverseExecuteAttribute.cs">
             <Link>Source\Generation\ReverseExecuteAttribute.cs</Link>
         </Compile>

@@ -35,6 +35,17 @@ namespace Aspid.Core.HSM
         public void ChangeState<TState>() where TState : IState =>
             _stateMachine!.ChangeState<TState>();
 
+        public void TransitionTo<TTarget>() where TTarget : IState =>
+            _stateMachine!.TransitionTo<TTarget>();
+
+        public void TransitionVia<TTransition>() where TTransition : ITransition =>
+            _stateMachine!.TransitionVia<TTransition>();
+
+        public bool IsTransitioning => _stateMachine?.IsTransitioning ?? false;
+
+        public void RegisterTransition(ITransition transition) =>
+            _stateMachine!.RegisterTransition(transition);
+
         #region Update
         private void Update()
         {
