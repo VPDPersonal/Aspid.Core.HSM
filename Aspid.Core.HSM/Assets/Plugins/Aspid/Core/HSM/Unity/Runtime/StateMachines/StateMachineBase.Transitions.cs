@@ -46,7 +46,28 @@ namespace Aspid.Core.HSM
             }
             else
             {
-                ChangeState<TTarget>();
+                var chain = ResolveTransitionChain(targetType);
+
+                if (chain is not null)
+                {
+                    foreach (var t in chain)
+                    {
+                        if (!t.CanTransition())
+                            return;
+                    }
+
+                    foreach (var t in chain)
+                        t.OnBeforeTransition();
+
+                    ChangeState<TTarget>();
+
+                    for (var i = chain.Count - 1; i >= 0; i--)
+                        chain[i].OnAfterTransition();
+                }
+                else
+                {
+                    ChangeState<TTarget>();
+                }
             }
         }
         #endregion
@@ -85,7 +106,28 @@ namespace Aspid.Core.HSM
             }
             else
             {
-                await ChangeStateAsync<TTarget>(ct);
+                var chain = ResolveTransitionChain(targetType);
+
+                if (chain is not null)
+                {
+                    foreach (var t in chain)
+                    {
+                        if (!t.CanTransition())
+                            return;
+                    }
+
+                    foreach (var t in chain)
+                        t.OnBeforeTransition();
+
+                    await ChangeStateAsync<TTarget>(ct);
+
+                    for (var i = chain.Count - 1; i >= 0; i--)
+                        chain[i].OnAfterTransition();
+                }
+                else
+                {
+                    await ChangeStateAsync<TTarget>(ct);
+                }
             }
         }
         #endregion
@@ -125,6 +167,68 @@ namespace Aspid.Core.HSM
             throw new InvalidOperationException(
                 $"Transition of type '{transitionType.Name}' is not registered.");
         }
+        #endregion
+
+        #region Chain Resolution
+
+        private readonly List<Type> _targetTypeChainBuffer = new(capacity: 4);
+
+        private List<ITransition>? ResolveTransitionChain(Type targetType)
+        {
+            // Build the target type chain by walking IChildState.ParentState
+            _targetTypeChainBuffer.Clear();
+            BuildTypeChain(targetType, _targetTypeChainBuffer);
+
+            // Find diverge index by comparing current chain types with target chain types
+            var currentCount = _currentStates.Count;
+            var commonLength = Math.Min(currentCount, _targetTypeChainBuffer.Count);
+            var divergeIndex = commonLength;
+
+            for (var i = 0; i < commonLength; i++)
+            {
+                if (_currentStates[i].GetType() != _targetTypeChainBuffer[i])
+                {
+                    divergeIndex = i;
+                    break;
+                }
+            }
+
+            // Build the traversal path: exiting states (leaf→diverge), then entering states (diverge→leaf)
+            var pathTypes = new List<Type>();
+
+            for (var i = currentCount - 1; i >= divergeIndex; i--)
+                pathTypes.Add(_currentStates[i].GetType());
+
+            for (var i = divergeIndex; i < _targetTypeChainBuffer.Count; i++)
+                pathTypes.Add(_targetTypeChainBuffer[i]);
+
+            // Look up transitions for each consecutive pair
+            List<ITransition>? chain = null;
+
+            for (var i = 0; i < pathTypes.Count - 1; i++)
+            {
+                var key = (pathTypes[i], pathTypes[i + 1]);
+                if (_transitionRegistry.TryGetValue(key, out var segmentTransition))
+                {
+                    chain ??= new List<ITransition>();
+                    chain.Add(segmentTransition);
+                }
+            }
+
+            return chain;
+        }
+
+        private static void BuildTypeChain(Type leafType, List<Type> result)
+        {
+            if (typeof(IChildState).IsAssignableFrom(leafType))
+            {
+                var instance = (IChildState)Activator.CreateInstance(leafType)!;
+                BuildTypeChain(instance.ParentState, result);
+            }
+
+            result.Add(leafType);
+        }
+
         #endregion
 
         #region Helpers
