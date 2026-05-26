@@ -9,6 +9,9 @@ namespace Aspid.Core.HSM
         public async UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState
         {
+            if (!IsStateEnabled(typeof(TState)))
+                return;
+
             var previous = _activeTransitionCts;
             if (previous is not null)
                 previous.Cancel();

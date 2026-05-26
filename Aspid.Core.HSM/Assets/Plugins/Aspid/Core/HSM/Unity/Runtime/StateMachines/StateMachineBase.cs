@@ -24,25 +24,49 @@ namespace Aspid.Core.HSM
         protected void Update(float deltaTime)
         {
             foreach (var state in _currentStates)
-                state.GetController<IUpdateController>()?.Update(deltaTime);
+            {
+                var controller = state.GetController<IUpdateController>();
+                if (controller is not null && IsControllerEnabled(controller, state))
+                    controller.Update(deltaTime);
+            }
             foreach (var ext in _activeExtensions)
-                ext.GetController<IUpdateController>()?.Update(deltaTime);
+            {
+                var controller = ext.GetController<IUpdateController>();
+                if (controller is not null && IsControllerEnabled(controller, ext))
+                    controller.Update(deltaTime);
+            }
         }
 
         protected void LateUpdate(float deltaTime)
         {
             foreach (var state in _currentStates)
-                state.GetController<ILateUpdateController>()?.LateUpdate(deltaTime);
+            {
+                var controller = state.GetController<ILateUpdateController>();
+                if (controller is not null && IsControllerEnabled(controller, state))
+                    controller.LateUpdate(deltaTime);
+            }
             foreach (var ext in _activeExtensions)
-                ext.GetController<ILateUpdateController>()?.LateUpdate(deltaTime);
+            {
+                var controller = ext.GetController<ILateUpdateController>();
+                if (controller is not null && IsControllerEnabled(controller, ext))
+                    controller.LateUpdate(deltaTime);
+            }
         }
 
         protected void FixedUpdate(float deltaTime)
         {
             foreach (var state in _currentStates)
-                state.GetController<IFixedUpdateController>()?.FixedUpdate(deltaTime);
+            {
+                var controller = state.GetController<IFixedUpdateController>();
+                if (controller is not null && IsControllerEnabled(controller, state))
+                    controller.FixedUpdate(deltaTime);
+            }
             foreach (var ext in _activeExtensions)
-                ext.GetController<IFixedUpdateController>()?.FixedUpdate(deltaTime);
+            {
+                var controller = ext.GetController<IFixedUpdateController>();
+                if (controller is not null && IsControllerEnabled(controller, ext))
+                    controller.FixedUpdate(deltaTime);
+            }
         }
         #endregion
 
@@ -50,6 +74,9 @@ namespace Aspid.Core.HSM
         public void ChangeState<TState>()
             where TState : IState
         {
+            if (!IsStateEnabled(typeof(TState)))
+                return;
+
             if (_activeTransitionCts is not null)
                 throw new InvalidOperationException(
                     "An asynchronous transition is in progress. Use ChangeStateAsync or wait for it to complete.");
@@ -145,6 +172,12 @@ namespace Aspid.Core.HSM
         protected virtual void Disposing() { }
 
         protected virtual void Disposed() { }
+        #endregion
+
+        #region Extension Points
+        protected virtual bool IsControllerEnabled(IController controller, IState state) => true;
+
+        protected virtual bool IsStateEnabled(Type stateType) => true;
         #endregion
     }
 }
