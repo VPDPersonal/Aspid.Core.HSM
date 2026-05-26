@@ -216,27 +216,83 @@ public static class ControllerGroupBody
 
             var indexes = interfaceData.ControllerIndexes;
             var isAsyncFlags = interfaceData.ControllerIsAsync;
-            for (var step = 0; step < indexes.Length; step++)
+
+            // Count async controllers to decide if WhenAll is needed
+            var asyncControllerCount = 0;
+            for (var i = 0; i < isAsyncFlags.Length; i++)
             {
-                var pos = method.IsReverse ? indexes.Length - 1 - step : step;
-                var index = indexes[pos];
-                var isAsync = isAsyncFlags[pos];
+                if (isAsyncFlags[i]) asyncControllerCount++;
+            }
 
-                code.AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
-                    .BeginBlock();
+            var isParallel = interfaceData.AsyncMode == 0;
+            var useWhenAll = isParallel && asyncControllerCount >= 2;
 
-                if (isAsync)
+            if (useWhenAll)
+            {
+                // Parallel mode with 2+ async controllers: emit sync calls first, then WhenAll for async
+                // First pass: emit sync controllers in order
+                for (var step = 0; step < indexes.Length; step++)
                 {
-                    code.AppendLine(
-                        $"await (({asyncIfaceName})__controller{index}).{asyncSymbol.Name}({parameterArgs});");
-                }
-                else
-                {
-                    code.AppendLine(
-                        $"(({syncIfaceName})__controller{index}).{method.Symbol.Name}();");
+                    var pos = method.IsReverse ? indexes.Length - 1 - step : step;
+                    var index = indexes[pos];
+                    var isAsync = isAsyncFlags[pos];
+
+                    if (!isAsync)
+                    {
+                        code.AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
+                            .BeginBlock()
+                            .AppendLine(
+                                $"(({syncIfaceName})__controller{index}).{method.Symbol.Name}();")
+                            .EndBlock();
+                    }
                 }
 
-                code.EndBlock();
+                // Second pass: collect async calls into WhenAll
+                code.AppendLine("await Cysharp.Threading.Tasks.UniTask.WhenAll(");
+                var first = true;
+                for (var step = 0; step < indexes.Length; step++)
+                {
+                    var pos = method.IsReverse ? indexes.Length - 1 - step : step;
+                    var index = indexes[pos];
+                    var isAsync = isAsyncFlags[pos];
+
+                    if (isAsync)
+                    {
+                        if (!first) code.AppendLine(",");
+                        code.Append(
+                            $"\t(({asyncIfaceName})__controller{index}).{asyncSymbol.Name}({parameterArgs})");
+                        first = false;
+                    }
+                }
+
+                code.AppendLine();
+                code.AppendLine(");");
+            }
+            else
+            {
+                // Sequential mode (or Parallel with 0-1 async controllers): await each individually
+                for (var step = 0; step < indexes.Length; step++)
+                {
+                    var pos = method.IsReverse ? indexes.Length - 1 - step : step;
+                    var index = indexes[pos];
+                    var isAsync = isAsyncFlags[pos];
+
+                    code.AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
+                        .BeginBlock();
+
+                    if (isAsync)
+                    {
+                        code.AppendLine(
+                            $"await (({asyncIfaceName})__controller{index}).{asyncSymbol.Name}({parameterArgs});");
+                    }
+                    else
+                    {
+                        code.AppendLine(
+                            $"(({syncIfaceName})__controller{index}).{method.Symbol.Name}();");
+                    }
+
+                    code.EndBlock();
+                }
             }
 
             return code.EndBlock().EndBlock();

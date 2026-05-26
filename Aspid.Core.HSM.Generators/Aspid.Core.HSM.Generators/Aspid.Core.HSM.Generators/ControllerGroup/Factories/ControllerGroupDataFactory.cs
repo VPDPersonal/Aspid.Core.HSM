@@ -10,9 +10,10 @@ public static class ControllerGroupDataFactory
         SemanticModel semanticModel,
         ClassDeclarationSyntax classDeclarationSyntax)
     {
+        var classSymbol = semanticModel.GetDeclaredSymbol(classDeclarationSyntax) as INamedTypeSymbol;
         var controllers = ControllerDataFactory.Create(semanticModel, classDeclarationSyntax);
-        var controllerInterfaces = ControllerInterfaceDataFactory.Create(controllers);
-        
+        var controllerInterfaces = ControllerInterfaceDataFactory.Create(controllers, classSymbol);
+
         return new ControllerGroupData(classDeclarationSyntax, controllers, controllerInterfaces);
     }
 }

@@ -86,6 +86,12 @@
         <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ControllerGroupAttribute.cs">
             <Link>Source\Generation\ControllerGroupAttribute.cs</Link>
         </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncModeAttribute.cs">
+            <Link>Source\Generation\AsyncModeAttribute.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncExecutionMode.cs">
+            <Link>Source\Generation\AsyncExecutionMode.cs</Link>
+        </Compile>
     </ItemGroup>
 
 </Project>

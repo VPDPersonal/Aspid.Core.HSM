@@ -11,7 +11,9 @@ namespace Aspid.Core.HSM.Generators.ControllerGroup.Factories;
 
 public static class ControllerInterfaceDataFactory
 {
-    public static ImmutableArray<ControllerInterfaceData> Create(in ImmutableArray<ControllerData> controllers)
+    public static ImmutableArray<ControllerInterfaceData> Create(
+        in ImmutableArray<ControllerData> controllers,
+        INamedTypeSymbol? classSymbol)
     {
         var buckets = new Dictionary<string, InterfaceBucket>();
 
@@ -43,6 +45,9 @@ public static class ControllerInterfaceDataFactory
             }
         }
 
+        // Read [AsyncMode] attributes from the class to determine per-interface async modes
+        var asyncModes = ReadAsyncModes(classSymbol, buckets);
+
         return buckets.Values.Select(bucket =>
         {
             var asyncMethods = bucket.AsyncType?.GetMembers().OfType<IMethodSymbol>()
@@ -73,8 +78,43 @@ public static class ControllerInterfaceDataFactory
             var indexes = bucket.Entries.Select(e => e.Index).ToImmutableArray();
             var asyncFlags = bucket.Entries.Select(e => e.IsAsync).ToImmutableArray();
 
-            return new ControllerInterfaceData(bucket.SyncType, bucket.AsyncType, indexes, asyncFlags, methods);
+            var key = bucket.SyncType.ToDisplayString();
+            asyncModes.TryGetValue(key, out var asyncMode);
+
+            return new ControllerInterfaceData(bucket.SyncType, bucket.AsyncType, indexes, asyncFlags, methods, asyncMode);
         }).ToImmutableArray();
+    }
+
+    private static Dictionary<string, int> ReadAsyncModes(
+        INamedTypeSymbol? classSymbol,
+        Dictionary<string, InterfaceBucket> buckets)
+    {
+        var result = new Dictionary<string, int>();
+        if (classSymbol is null) return result;
+
+        foreach (var attr in classSymbol.GetAttributes())
+        {
+            if (attr.AttributeClass is not { } cls) continue;
+            if (cls.ToDisplayString() != AsyncModeAttribute) continue;
+            if (attr.ConstructorArguments.Length < 2) continue;
+
+            if (attr.ConstructorArguments[0].Value is not ITypeSymbol asyncInterface) continue;
+            var mode = (int)attr.ConstructorArguments[1].Value!;
+
+            // Match the async interface type to a bucket's AsyncType
+            var asyncIfaceDisplay = asyncInterface.ToDisplayString();
+            foreach (var kvp in buckets)
+            {
+                if (kvp.Value.AsyncType is not null
+                    && kvp.Value.AsyncType.ToDisplayString() == asyncIfaceDisplay)
+                {
+                    result[kvp.Key] = mode;
+                    break;
+                }
+            }
+        }
+
+        return result;
     }
 
     private static (ITypeSymbol SyncIface, ITypeSymbol? AsyncIface) ResolveSyncAsyncPair(INamedTypeSymbol @interface)
