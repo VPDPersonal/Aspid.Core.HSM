@@ -30,6 +30,9 @@ namespace Aspid.Core.HSM
         #region TransitionTo (sync)
         public void TransitionTo<TTarget>() where TTarget : IState
         {
+            if (!IsStateEnabled(typeof(TTarget)))
+                return;
+
             var targetType = typeof(TTarget);
             var currentLeafType = _currentStates[^1].GetType();
 
