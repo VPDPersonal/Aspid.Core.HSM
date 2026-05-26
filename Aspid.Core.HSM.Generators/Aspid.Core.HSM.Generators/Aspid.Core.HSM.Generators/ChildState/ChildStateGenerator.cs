@@ -5,6 +5,7 @@ using Aspid.Generators.Helper;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Aspid.Core.HSM.Generators.Diagnostics;
 using Aspid.Core.HSM.Generators.ChildState.Data;
 using Aspid.Core.HSM.Generators.ChildState.Bodies;
 using Aspid.Core.HSM.Generators.ChildState.Factories;
@@ -20,7 +21,7 @@ public sealed class ChildStateGenerator : IIncrementalGenerator
         var provider = context.SyntaxProvider.ForAttributeWithMetadataName(ParentStateAttribute.FullName, Predicate, Transform)
             .Where(static data => data.HasValue)
             .Select(static (data, _) => data!.Value);
-        
+
         context.RegisterSourceOutput(provider, GenerateCode);
     }
 
@@ -40,9 +41,21 @@ public sealed class ChildStateGenerator : IIncrementalGenerator
 
         return ChildStateDataFactory.Create(context.SemanticModel, classDeclaration);
     }
-    
+
     private static void GenerateCode(SourceProductionContext context, ChildStateData data)
     {
+        if (data.CycleInfo.HasValue)
+        {
+            var info = data.CycleInfo.Value;
+            var location = data.ClassDeclaration.Identifier.GetLocation();
+            context.ReportDiagnostic(Diagnostic.Create(
+                HsmDiagnostics.CyclicHierarchy,
+                location,
+                info.ClassName,
+                info.CycleThrough));
+            return;
+        }
+
         var declarationSyntax = data.ClassDeclaration;
         var declarationText = new DeclarationText(declarationSyntax);
         NamespaceText? namespaceText = declarationSyntax.GetNamespaceName();
