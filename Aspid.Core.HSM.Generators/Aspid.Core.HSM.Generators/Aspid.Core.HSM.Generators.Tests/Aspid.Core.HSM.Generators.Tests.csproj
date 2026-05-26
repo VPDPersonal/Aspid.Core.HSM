@@ -98,6 +98,15 @@
         <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncExecutionMode.cs">
             <Link>Source\Generation\AsyncExecutionMode.cs</Link>
         </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IExtensionState.cs">
+            <Link>Source\IExtensionState.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ExtensionForAttribute.cs">
+            <Link>Source\Generation\ExtensionForAttribute.cs</Link>
+        </Compile>
+        <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Extensions.cs">
+            <Link>Runtime\StateMachines\StateMachineBase.Extensions.cs</Link>
+        </Compile>
     </ItemGroup>
 
 </Project>

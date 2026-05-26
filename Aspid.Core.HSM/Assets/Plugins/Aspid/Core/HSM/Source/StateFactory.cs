@@ -40,6 +40,8 @@ namespace Aspid.Core.HSM
                 OnInitializeState(state);
         }
 
+        public IState CreateInstance(Type type) => CreateStateInternal(type);
+
         protected abstract IState CreateStateInternal(Type type);
 
         protected virtual void OnInitializeState(IState state) { }

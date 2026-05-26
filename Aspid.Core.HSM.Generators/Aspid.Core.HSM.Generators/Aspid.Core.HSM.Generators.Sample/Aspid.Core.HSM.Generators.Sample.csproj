@@ -107,6 +107,15 @@
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\TransitionAttribute.cs">
         <Link>Source\Generation\TransitionAttribute.cs</Link>
       </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IExtensionState.cs">
+        <Link>Source\IExtensionState.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ExtensionForAttribute.cs">
+        <Link>Source\Generation\ExtensionForAttribute.cs</Link>
+      </Compile>
+      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Extensions.cs">
+        <Link>Runtime\StateMachines\StateMachineBase.Extensions.cs</Link>
+      </Compile>
     </ItemGroup>
 
     <ItemGroup>

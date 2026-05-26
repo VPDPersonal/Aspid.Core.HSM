@@ -8,6 +8,7 @@ namespace Aspid.Core.HSM
     public partial class MonoStateMachine : MonoBehaviour, IStateMachine, IDisposable
     {
         private static readonly IReadOnlyList<IState> EmptyStates = Array.Empty<IState>();
+        private static readonly IReadOnlyList<IExtensionState> EmptyExtensions = Array.Empty<IExtensionState>();
 
         private MonoStateMachineCore? _stateMachine;
 
@@ -31,6 +32,12 @@ namespace Aspid.Core.HSM
 
         protected virtual void OnInitialized() { }
         #endregion
+
+        public IReadOnlyList<IExtensionState> ActiveExtensions => _stateMachine?.ActiveExtensions ?? EmptyExtensions;
+
+        public void AttachExtension<T>() where T : IExtensionState => _stateMachine!.AttachExtension<T>();
+
+        public void DetachExtension<T>() where T : IExtensionState => _stateMachine!.DetachExtension<T>();
 
         public void ChangeState<TState>() where TState : IState =>
             _stateMachine!.ChangeState<TState>();

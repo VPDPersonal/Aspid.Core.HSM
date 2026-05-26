@@ -17,5 +17,9 @@ namespace Aspid.Core.HSM
         UniTask TransitionViaAsync<TTransition>(CancellationToken ct = default) where TTransition : ITransition;
 
         bool IsTransitioning { get; }
+
+        IReadOnlyList<IExtensionState> ActiveExtensions { get; }
+        void AttachExtension<T>() where T : IExtensionState;
+        void DetachExtension<T>() where T : IExtensionState;
     }
 }

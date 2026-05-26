@@ -37,6 +37,7 @@ namespace Aspid.Core.HSM
                     }
                 }
                 OnChangedState();
+                AutoDetachIncompatibleExtensions();
             }
             finally
             {
