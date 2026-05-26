@@ -1,5 +1,3 @@
-using System;
-
 namespace Aspid.Core.HSM.Generators.Tests.StateMachineTests;
 
 public class BaseTestState : IState
@@ -110,18 +108,9 @@ public class CachedTestState : BaseTestState { }
 #region Hierarchical States
 public class ParentTestState : BaseTestState { }
 
-public class ChildTestState : BaseTestState, IChildState
-{
-    public Type ParentState => typeof(ParentTestState);
-}
+public class ChildTestState : BaseTestState, IChildState<ParentTestState> { }
 
-public class SiblingChildTestState : BaseTestState, IChildState
-{
-    public Type ParentState => typeof(ParentTestState);
-}
+public class SiblingChildTestState : BaseTestState, IChildState<ParentTestState> { }
 
-public class GrandchildTestState : BaseTestState, IChildState
-{
-    public Type ParentState => typeof(ChildTestState);
-}
+public class GrandchildTestState : BaseTestState, IChildState<ChildTestState> { }
 #endregion

@@ -6,6 +6,7 @@ namespace Aspid.Core.HSM
     public interface IStateScope : IDisposable
     {
         IStateScope? Parent { get; }
+        
         IStateScope CreateChildScope();
     }
 }
