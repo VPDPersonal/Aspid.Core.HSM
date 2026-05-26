@@ -25,18 +25,24 @@ namespace Aspid.Core.HSM
         {
             foreach (var state in _currentStates)
                 state.GetController<IUpdateController>()?.Update(deltaTime);
+            foreach (var ext in _activeExtensions)
+                ext.GetController<IUpdateController>()?.Update(deltaTime);
         }
 
         protected void LateUpdate(float deltaTime)
         {
             foreach (var state in _currentStates)
                 state.GetController<ILateUpdateController>()?.LateUpdate(deltaTime);
+            foreach (var ext in _activeExtensions)
+                ext.GetController<ILateUpdateController>()?.LateUpdate(deltaTime);
         }
 
         protected void FixedUpdate(float deltaTime)
         {
             foreach (var state in _currentStates)
                 state.GetController<IFixedUpdateController>()?.FixedUpdate(deltaTime);
+            foreach (var ext in _activeExtensions)
+                ext.GetController<IFixedUpdateController>()?.FixedUpdate(deltaTime);
         }
         #endregion
 
@@ -67,6 +73,7 @@ namespace Aspid.Core.HSM
                 }
             }
             OnChangedState();
+            AutoDetachIncompatibleExtensions();
         }
 
         private int FindDivergeIndex(IReadOnlyList<IState> newChain)
@@ -126,6 +133,9 @@ namespace Aspid.Core.HSM
         {
             Disposing();
             {
+                for (int i = _activeExtensions.Count - 1; i >= 0; i--)
+                    DetachExtensionAt(i);
+
                 foreach (var state in _currentStates)
                     state.GetController<IDisposableController>()?.Dispose();
             }
