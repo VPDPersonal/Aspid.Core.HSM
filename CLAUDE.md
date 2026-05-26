@@ -21,34 +21,237 @@ dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core
 dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core.HSM.Generators.Tests.csproj --filter FullyQualifiedName~StateMachineBaseTests
 ```
 
-After modifying the generator, just run `dotnet build` — the `CopyGeneratorToUnityPackage` target in `Aspid.Core.HSM.Generators/.../Directory.Build.targets` (`AfterTargets="Build"`) drops the DLL into `Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/`. Do not copy by hand and do not add a hook for this. The Unity project itself is built/run from the Unity Editor, not the CLI.
+After modifying the generator, just run `dotnet build` — the `CopyGeneratorToUnityPackage` target in `Directory.Build.targets` drops the DLL into the Unity package. Do not copy by hand.
 
 ## HSM architecture
 
-The framework is a Hierarchical State Machine driven by composition of small abstractions. Understanding all of these together is required to be productive:
+### Type hierarchy
 
-- `IState` — `Enter`/`Exit` hooks (default no-op). `EmptyState` is the initial state used by `StateMachineBase`.
-- `IChildState` — exposes `Type ParentState`. Implemented automatically by the generator (see below); user code marks the relationship with `[ParentState(typeof(Parent))]` and the generator emits the `IChildState` implementation. `[ParentState(null)]` marks a root state.
-- `IController` — marker. Concrete controllers (e.g. `IUpdateController`, `IEnterController`, `IExitController`, `IFixedUpdateController`, `ILateUpdateController`, `IDisposableController`) are looked up on a state via `state.GetController<T>()` (`StateExtensions.cs`), which uses `is`-pattern: a state is its own controller when it implements the interface directly, or a `[ControllerGroup]` partial class aggregates multiple controllers.
-- `StateFactory` / `StateFactory<TState>` — abstract; subclasses implement `CreateStateInternal(Type)`. The factory walks `IChildState.ParentState` chains to materialize the full path from root to the requested leaf state, reusing already-active states when their type matches at the same depth, and tracks first-time initialization via `_initializedStates`.
-- `StateMachineBase` (`Unity/Runtime`) — holds `_currentStates` (root→leaf list). `ChangeState<T>()` asks the factory for the new chain, diffs it against the active list, exits/releases removed states from the tail, then enters added states. `Update`/`LateUpdate`/`FixedUpdate` iterate the active chain and dispatch via `GetController<T>()`. `MonoStateMachine` wires this to Unity's MonoBehaviour lifecycle.
+```
+IController (marker)
+  ├── IEnterController        → OnEnter()
+  ├── IExitController         → [ReverseExecute] OnExit()
+  ├── IUpdateController       → Update(float deltaTime)
+  ├── ILateUpdateController   → LateUpdate(float deltaTime)
+  ├── IFixedUpdateController  → FixedUpdate(float deltaTime)
+  ├── IDisposableController   → [ReverseExecute] Dispose()
+  ├── IAsyncEnterController   → [AsyncOf(IEnterController)] OnEnterAsync(CancellationToken)
+  └── IAsyncExitController    → [AsyncOf(IExitController)] [ReverseExecute] OnExitAsync(CancellationToken)
 
-Key invariant: state lifetime and parent-chain construction are owned by `StateFactory`; `StateMachineBase` only diffs and enters/exits. When changing one, keep the other's assumptions in mind (e.g. `Release` is called by the machine on exit, and the factory's `_initializedStates` set is what makes "first enter" detectable).
+Controller → ControllerGroup → State
+```
+
+**Controller** — smallest unit of logic. Implements one or more controller interfaces. Knows nothing about state machine or states.
+
+**ControllerGroup** — Composite pattern. Itself an `IController`, aggregates child controllers and/or other ControllerGroups. `[ControllerGroup]` generator implements all controller interfaces from children, delegating calls. Can be reused across states.
+
+**State** — ControllerGroup with `Enter()`/`Exit()`, parent hierarchy via `[ParentState]`, unit of DI Scope. When parent state has children, parent does NOT exit — its controllers keep running.
+
+### Transition pipeline
+
+`ITransition` wraps state changes with a pipeline: Guard → Before → Exit → Enter → After.
+
+```csharp
+// Define a transition
+[Transition(typeof(FreerideState), typeof(RaceState))]
+public partial class FreerideToRace : ITransition
+{
+    public bool CanTransition() => /* guard logic */;
+    public void OnBeforeTransition() { }
+    public void OnAfterTransition() { }
+}
+
+// Register and use
+stateMachine.RegisterTransition(new FreerideToRace());
+stateMachine.TransitionTo<RaceState>();      // lookup by target
+stateMachine.TransitionVia<FreerideToRace>(); // lookup by type
+```
+
+**Resolution:** Direct transition first → chain fallback (compose segment transitions along state tree path, all guards must pass before any exit).
+
+`ResolveTransition(Type source, Type target)` is virtual — override for config-driven transition replacement.
+
+### Extension States
+
+Dynamic mixin states that attach/detach at runtime:
+
+```csharp
+[ExtensionFor(typeof(FreerideState), typeof(RaceState))]
+[ControllerGroup]
+public partial class MiniGameExtension : IExtensionState
+{
+    public MiniGameExtension() { AddControllers(new TimerController()); }
+}
+
+stateMachine.AttachExtension<MiniGameExtension>();  // checks CanAttachTo
+stateMachine.DetachExtension<MiniGameExtension>();
+```
+
+Auto-detach on incompatible transition. Dispatch order: host states first → extensions in attachment order.
+
+### Async support
+
+Two execution modes configured per-interface via `[AsyncMode]`:
+
+```csharp
+[ControllerGroup]
+[AsyncMode(typeof(IAsyncEnterController), AsyncExecutionMode.Sequential)]
+[AsyncMode(typeof(IAsyncExitController), AsyncExecutionMode.Parallel)]
+public partial class GameplayState : IState { ... }
+```
+
+- **Parallel** (default): `UniTask.WhenAll(...)` for 2+ async controllers
+- **Sequential**: individual `await` per controller
+
+Mixed sync/async: generator detects per-controller, sync called inline, async awaited.
+
+### Scope management
+
+Each state gets an `IStateScope`. Child states inherit parent scopes.
+
+```csharp
+factory.SetRootScope(rootScope);  // enables scope creation
+var scope = factory.GetScope<GameplayState>();  // get active scope
+
+[ScopeLifetime(ScopeLifetime.Cached)]  // survives Exit, reused on re-enter
+public partial class GlobalMapState : IState { ... }
+```
+
+`CreateScopeForState(Type, IStateScope?)` is virtual — override in VContainer/Zenject integration.
+
+### Extension points
+
+```csharp
+protected virtual bool IsControllerEnabled(IController controller, IState state) => true;
+protected virtual bool IsStateEnabled(Type stateType) => true;
+protected virtual ITransition? ResolveTransition(Type source, Type target) => /* registry lookup */;
+```
+
+Override to implement config-driven controller/state disabling or transition replacement.
 
 ## Source generators
 
-Two incremental generators live in `Aspid.Core.HSM.Generators/`:
+Four incremental generators in `Aspid.Core.HSM.Generators/`:
 
-- `ChildStateGenerator` (triggered by `[ParentState]`) — emits `IChildState` (or root-state equivalent) on a `partial class`. Class must be `partial` and non-`static`.
-- `ControllersGroupGenerator` (triggered by `[ControllerGroup]`) — emits the controller-aggregation plumbing (e.g. `AddControllers(...)` used in samples) so a single class can dispatch to multiple inner controllers. The aggregator interacts with `[ReverseExecuteAttribute]` and `[AsyncAttribute]` on group methods.
+| Generator | Trigger | Emits |
+|---|---|---|
+| `ChildStateGenerator` | `[ParentState]` | `IChildState.ParentState` property |
+| `ControllersGroupGenerator` | `[ControllerGroup]` | Controller aggregation, profiler markers, async dispatch |
+| `TransitionGenerator` | `[Transition]` | `ITransition.SourceState`/`TargetState` properties |
+| `ExtensionStateGenerator` | `[ExtensionFor]` | `IExtensionState.CanAttachTo()` pattern matching |
 
-Each generator is split into `Data/` (incremental record), `Factories/` (build the record from `SemanticModel` + `ClassDeclarationSyntax`), and `Bodies/` (emit source). `Descriptions/HsmClasses.cs` and `HsmNamespaces.cs` centralize the framework type names that the generators reference — update these when renaming public attributes/types in the runtime.
+Each follows the pattern: `Data/` (record) → `Factories/` (extract from SemanticModel) → `Bodies/` (emit source). `Descriptions/HsmClasses.cs` centralizes type names — update when renaming.
 
-When adding a state, mark it `partial`, apply `[ParentState(typeof(...))]` (or `[ParentState(null)]` for root), and the `IChildState` implementation is generated. See `Aspid.Core.HSM/Assets/_Scripts/States/RootState.cs` and `SinglePlayerState.cs` for the canonical pattern, and `Aspid.Core.HSM.Generators.Sample/Sample/` for `[ControllerGroup]` usage.
+### Compile-time diagnostics
+
+| ID | Severity | Description |
+|---|---|---|
+| HSM001 | Error | Cyclic state hierarchy detected in `[ParentState]` chain |
+
+## File layout
+
+```
+Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/
+├── Source/                              # Core (no Unity deps)
+│   ├── IController.cs                   # Marker interface
+│   ├── IState.cs                        # Enter/Exit
+│   ├── IChildState.cs                   # ParentState property
+│   ├── IStateMachine.cs                 # Public API
+│   ├── ITransition.cs                   # Transition pipeline
+│   ├── IExtensionState.cs               # Dynamic mixin states
+│   ├── IStateScope.cs                   # DI scope abstraction
+│   ├── ScopeLifetime.cs                 # Transient/Cached enum
+│   ├── EmptyState.cs                    # Initial state
+│   ├── StateFactory.cs                  # State + scope lifecycle
+│   ├── Generation/                      # Attributes for generators
+│   │   ├── ParentStateAttribute.cs
+│   │   ├── ControllerGroupAttribute.cs
+│   │   ├── TransitionAttribute.cs
+│   │   ├── ExtensionForAttribute.cs
+│   │   ├── AsyncOfAttribute.cs
+│   │   ├── AsyncModeAttribute.cs
+│   │   ├── AsyncExecutionMode.cs
+│   │   ├── ScopeLifetimeAttribute.cs
+│   │   ├── ReverseExecuteAttribute.cs
+│   │   └── AsyncAttribute.cs
+│   └── Extensions/
+│       ├── StateExtensions.cs           # GetController<T>()
+│       └── StateMachineExtensions.cs    # GetParentState/GetChildState
+└── Unity/Runtime/
+    ├── Controllers/                     # Controller interfaces (9 files)
+    └── StateMachines/
+        ├── StateMachineBase.cs          # Core: ChangeState, Update, Enter/Exit
+        ├── StateMachineBase.Async.cs    # ChangeStateAsync
+        ├── StateMachineBase.Transitions.cs  # TransitionTo/Via, registry, chain
+        ├── StateMachineBase.Extensions.cs   # Attach/Detach extensions
+        ├── MonoStateMachine.cs          # Unity MonoBehaviour wrapper
+        ├── MonoStateMachine.Async.cs
+        └── MonoStateMachineCore.cs      # Internal bridge
+```
+
+## Common patterns
+
+### Adding a new state
+
+```csharp
+[ControllerGroup]
+[ParentState(typeof(GameplayState))]  // omit for root state
+public partial class NewState : IState
+{
+    public NewState()
+    {
+        AddControllers(new SomeController(), new AnotherController());
+    }
+}
+```
+
+Register in factory: `factory.RegisterState<NewState>();`
+
+### Adding a new controller
+
+```csharp
+public class PlayerMovementController : IUpdateController, IEnterController
+{
+    void IEnterController.OnEnter() { /* init */ }
+    void IUpdateController.Update(float dt) { /* move */ }
+}
+```
+
+### Adding a new transition
+
+```csharp
+[Transition(typeof(SourceState), typeof(TargetState))]
+public partial class SourceToTarget : ITransition
+{
+    public bool CanTransition() => true;
+    public void OnBeforeTransition() { }
+    public void OnAfterTransition() { }
+}
+```
+
+Register: `stateMachine.RegisterTransition(new SourceToTarget());`
+
+### Adding an extension state
+
+```csharp
+[ExtensionFor(typeof(FreerideState), typeof(RaceState))]
+[ControllerGroup]
+public partial class MiniGameExtension : IExtensionState
+{
+    public MiniGameExtension()
+    {
+        AddControllers(new MiniGameController());
+    }
+}
+```
 
 ## Claude Code setup
 
-- `.claude/settings.json` blocks `Edit`/`Write` on `*.meta` (Unity-managed) and `Aspid.Core.HSM.Generators.dll` (build artifact) via `PreToolUse`. Don't try to bypass — fix the source instead.
-- `.claude/skills/rebuild-generator` — user-invoked rebuild; copy is automatic via `Directory.Build.targets`.
-- `.claude/skills/gen-snapshot-test` — template for `CSharpSourceGeneratorTest<TGenerator, XUnitVerifier>` tests under `Aspid.Core.HSM.Generators.Tests/`.
-- `.mcp.json` ships `context7` (Roslyn/Unity docs) and `github` (needs `GITHUB_PERSONAL_ACCESS_TOKEN`).
+- `.claude/settings.json` blocks `Edit`/`Write` on `*.meta` and `Aspid.Core.HSM.Generators.dll` via hooks.
+- `.claude/skills/rebuild-generator` — rebuilds generator DLL.
+- `.claude/skills/gen-snapshot-test` — template for generator snapshot tests.
+- `.claude/skills/create-state` — scaffold a new HSM state.
+- `.claude/skills/create-controller` — scaffold a new controller.
+- `.claude/skills/create-transition` — scaffold a new transition.
+- `.claude/skills/create-extension` — scaffold a new extension state.
+- `.mcp.json` — `context7` (Roslyn/Unity docs), `github`, `hsm-analyzer` (HSM tree introspection).
