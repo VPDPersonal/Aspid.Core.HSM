@@ -10,6 +10,10 @@
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
+    },
+    "hsm-analyzer": {
+      "command": "npx",
+      "args": ["tsx", ".claude/mcp-servers/hsm-analyzer/src/index.ts"]
     }
   }
 }
