@@ -102,6 +102,11 @@ public class DisposableTestState : BaseTestState, IDisposableController
 }
 #endregion
 
+#region Scope States
+[ScopeLifetime(ScopeLifetime.Cached)]
+public class CachedTestState : BaseTestState { }
+#endregion
+
 #region Hierarchical States
 public class ParentTestState : BaseTestState { }
 
