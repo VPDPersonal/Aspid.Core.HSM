@@ -7,8 +7,10 @@ namespace Aspid.Core.HSM
     {
         private readonly List<IExtensionState> _activeExtensions = new();
 
+        /// <inheritdoc />
         public IReadOnlyList<IExtensionState> ActiveExtensions => _activeExtensions;
 
+        /// <inheritdoc />
         public void AttachExtension<T>() where T : IExtensionState
         {
             var extension = (IExtensionState)_stateFactory.CreateInstance(typeof(T));
@@ -24,6 +26,7 @@ namespace Aspid.Core.HSM
             extension.OnAttached(leafState);
         }
 
+        /// <inheritdoc />
         public void DetachExtension<T>() where T : IExtensionState
         {
             for (int i = _activeExtensions.Count - 1; i >= 0; i--)

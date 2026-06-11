@@ -1,8 +1,7 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using System.Collections.Generic;
 
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
@@ -11,15 +10,23 @@ namespace Aspid.Core.HSM
     {
         private readonly Dictionary<(Type source, Type target), ITransition> _transitionRegistry = new();
 
+        /// <inheritdoc />
         public bool IsTransitioning => _activeTransitionCts is not null;
 
         #region Registration
+        /// <summary>
+        /// Registers a transition for use by <see cref="TransitionTo{TTarget}"/> and
+        /// <see cref="TransitionVia{TTransition}"/>. Overwrites any existing transition with the same source/target pair.
+        /// </summary>
+        /// <param name="transition">The transition to register.</param>
         public void RegisterTransition(ITransition transition)
         {
             var key = (transition.SourceState, transition.TargetState);
             _transitionRegistry[key] = transition;
         }
 
+        /// <inheritdoc cref="RegisterTransition(ITransition)"/>
+        /// <typeparam name="TTransition">The transition type.</typeparam>
         public void RegisterTransition<TTransition>(TTransition transition)
             where TTransition : ITransition
         {
@@ -28,6 +35,7 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region TransitionTo (sync)
+        /// <inheritdoc />
         public void TransitionTo<TTarget>() where TTarget : IState
         {
             if (!IsStateEnabled(typeof(TTarget)))
@@ -76,6 +84,7 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region TransitionVia (sync)
+        /// <inheritdoc />
         public void TransitionVia<TTransition>() where TTransition : ITransition
         {
             var transition = FindTransitionByType<TTransition>();
@@ -90,6 +99,7 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region TransitionTo (async)
+        /// <inheritdoc />
         public async UniTask TransitionToAsync<TTarget>(CancellationToken ct = default)
             where TTarget : IState
         {
@@ -136,6 +146,7 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region TransitionVia (async)
+        /// <inheritdoc />
         public async UniTask TransitionViaAsync<TTransition>(CancellationToken ct = default)
             where TTransition : ITransition
         {
@@ -151,6 +162,13 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region Resolution
+        /// <summary>
+        /// Resolves a registered transition between the given source and target state types.
+        /// Override to implement custom transition resolution (e.g. convention-based lookup).
+        /// </summary>
+        /// <param name="sourceType">The source state type.</param>
+        /// <param name="targetType">The target state type.</param>
+        /// <returns>The matching transition, or <c>null</c> if none is registered.</returns>
         protected virtual ITransition? ResolveTransition(Type sourceType, Type targetType)
         {
             var key = (sourceType, targetType);

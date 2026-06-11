@@ -6,6 +6,13 @@ namespace Aspid.Core.HSM
 {
     public partial class StateMachineBase
     {
+        /// <summary>
+        /// Asynchronously transitions to <typeparamref name="TState"/>. Cancels any in-progress
+        /// async transition. States implementing <see cref="IAsyncEnterController"/> or
+        /// <see cref="IAsyncExitController"/> are awaited; others fall back to synchronous controllers.
+        /// </summary>
+        /// <typeparam name="TState">The target leaf state type.</typeparam>
+        /// <param name="cancellationToken">Cancellation token for the transition.</param>
         public async UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState
         {
