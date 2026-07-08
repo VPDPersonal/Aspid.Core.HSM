@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.0.1] — 2026-07-08
+## [0.0.1-alpha.1] — 2026-07-08
 
 Initial preview release of **Aspid.Core.HSM** — a Roslyn-powered Hierarchical State Machine for Unity 2022.3+, distributed as the UPM package `com.aspid.core.hsm`. The public API and generated boilerplate may still change before the first stable release.
 
@@ -42,5 +42,5 @@ Three Roslyn incremental generators, each triggered via an attribute on a `parti
 - Dependency on [UniTask](https://github.com/Cysharp/UniTask) for the async enter/exit controllers.
 - **Game Loop** sample: a full state hierarchy with guarded transitions, async loading, extensions, scopes and extension points.
 
-[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1
+[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.1...HEAD
+[0.0.1-alpha.1]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.1
