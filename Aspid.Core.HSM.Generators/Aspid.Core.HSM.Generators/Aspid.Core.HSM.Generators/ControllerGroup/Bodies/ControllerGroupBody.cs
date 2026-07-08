@@ -66,6 +66,7 @@ public static class ControllerGroupBody
         private CodeWriter AppendProfilerMarkerFields(in ControllerGroupData data)
         {
             var className = data.ClassDeclaration.Identifier.Text;
+            var emittedMarkerNames = new System.Collections.Generic.HashSet<string>();
 
             foreach (var controllerInterface in data.ControllerInterfaces)
             {
@@ -75,6 +76,11 @@ public static class ControllerGroupBody
                         ? async.AsyncSymbol.Name
                         : method.Symbol.Name;
                     var markerName = GetMarkerNameForMethod(method.Symbol.Name);
+
+                    // Marker field names derive from the method's simple name, so methods that share a
+                    // name across interfaces (or overloads) collide. Emit each field name only once.
+                    if (!emittedMarkerNames.Add(markerName))
+                        continue;
 
                     code.AppendMultiline(
                         $"""
@@ -204,6 +210,10 @@ public static class ControllerGroupBody
                 asyncSymbol.Parameters.Select(p => $"{p.Type.ToDisplayStringGlobal()} {p.Name}"));
             var parameterArgs = string.Join(",",
                 asyncSymbol.Parameters.Select(p => p.Name));
+            // Sync-only controllers in an async bucket are called through the sync interface, whose
+            // method may take its own parameters — forward them instead of emitting empty parens.
+            var syncParameterArgs = string.Join(",",
+                method.Symbol.Parameters.Select(p => p.Name));
 
             code.AppendMultiline(
                     $"""
@@ -242,7 +252,7 @@ public static class ControllerGroupBody
                         code.AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
                             .BeginBlock()
                             .AppendLine(
-                                $"(({syncIfaceName})__controller{index}).{method.Symbol.Name}();")
+                                $"(({syncIfaceName})__controller{index}).{method.Symbol.Name}({syncParameterArgs});")
                             .EndBlock();
                     }
                 }
@@ -288,7 +298,7 @@ public static class ControllerGroupBody
                     else
                     {
                         code.AppendLine(
-                            $"(({syncIfaceName})__controller{index}).{method.Symbol.Name}();");
+                            $"(({syncIfaceName})__controller{index}).{method.Symbol.Name}({syncParameterArgs});");
                     }
 
                     code.EndBlock();

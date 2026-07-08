@@ -200,7 +200,8 @@ namespace Aspid.Core.HSM
 
         #region Dispose
         /// <summary>
-        /// Detaches all extensions and disposes all active states via <see cref="IDisposableController"/>.
+        /// Detaches all extensions, disposes all active states via <see cref="IDisposableController"/>,
+        /// and disposes all active and cached state scopes.
         /// </summary>
         public void Dispose()
         {
@@ -211,6 +212,8 @@ namespace Aspid.Core.HSM
 
                 foreach (var state in _currentStates)
                     state.GetController<IDisposableController>()?.Dispose();
+
+                _stateFactory.DisposeAllScopes();
             }
             Disposed();
         }
