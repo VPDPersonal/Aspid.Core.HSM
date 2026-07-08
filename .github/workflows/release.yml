@@ -17,7 +17,7 @@ permissions:
 env:
   PACKAGE_PATH: Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM
   CHANGELOG_PATH: CHANGELOG.md
-  GENERATORS_SOLUTION: Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.slnx
+  GENERATOR_PROJECT: Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.csproj
 
 jobs:
   release:
@@ -115,15 +115,15 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Build generators
-        run: dotnet build "$GENERATORS_SOLUTION" -c Release
+      - name: Build generator
+        run: dotnet build "$GENERATOR_PROJECT" -c Release
 
       - name: Verify deployed generator DLL is present
         run: |
           set -euo pipefail
           DEPLOYED="$PACKAGE_PATH/Aspid.Core.HSM.Generators.dll"
           if [[ ! -s "$DEPLOYED" ]]; then
-            echo "::error file=$DEPLOYED::Generator DLL is missing from the package. Run 'dotnet build -c Release' on $GENERATORS_SOLUTION and commit the updated DLL before releasing."
+            echo "::error file=$DEPLOYED::Generator DLL is missing from the package. Run 'dotnet build -c Release' on $GENERATOR_PROJECT and commit the updated DLL before releasing."
             exit 1
           fi
           echo "Deployed generator DLL: $(stat -c '%s bytes' "$DEPLOYED")"
