@@ -7,7 +7,8 @@ public partial class MultiplayerState : IState
     {
         AddControllers(
             new PlayerController(),
-            new SomeUpdateController());
+            new SomeUpdateController(),
+            new InputControllerGroup());
     }
 
     public void Enter()

@@ -159,6 +159,8 @@ public interface ITransition<TSource, TTarget> : ITransition
 
 An optional State that lives between exiting Source and entering Target. Used for loading screens, fade effects, intermediate animations.
 
+**TransitionState runs in a separate execution context** — not in the main State Machine. The main machine is mid-transition and cannot "enter" another state via its normal mechanism. Instead, the Transition owns a lightweight state machine (or execution context) that manages the TransitionState lifecycle independently. This separate machine handles the TransitionState's controller dispatch (Update, etc.) while the main machine's transition pipeline is suspended awaiting async work.
+
 ```csharp
 [ControllerGroup]
 public partial class LoadingTransitionState : IState
