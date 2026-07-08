@@ -13,11 +13,22 @@ namespace Aspid.Core.HSM
         /// <inheritdoc />
         public void AttachExtension<T>() where T : IExtensionState
         {
+            // Scopes and initialization are keyed by Type in StateFactory, so a second instance of
+            // the same extension type would share (and later dispose) the first one's scope. Dedupe.
+            for (int i = 0; i < _activeExtensions.Count; i++)
+            {
+                if (_activeExtensions[i] is T)
+                    return;
+            }
+
             var extension = (IExtensionState)_stateFactory.CreateInstance(typeof(T));
             var leafState = _currentStates[^1];
 
             if (!extension.CanAttachTo(leafState))
+            {
+                _stateFactory.Release(extension);
                 return;
+            }
 
             _activeExtensions.Add(extension);
             _stateFactory.MarkInitialized(extension);

@@ -115,15 +115,20 @@ namespace Aspid.Core.HSM
             if (state is EmptyState) return;
 
             var stateType = state.GetType();
+            var isCached = GetScopeLifetime(stateType) == ScopeLifetime.Cached;
 
-            _initializedStates.Remove(stateType);
+            // Cached states keep their scope AND their initialized flag on re-entry, so the one-time
+            // OnInitializeState hook stays truly one-time. Transient states are fully reset.
+            if (!isCached)
+                _initializedStates.Remove(stateType);
+
             ReleaseInternal(state);
 
             if (_activeScopes.TryGetValue(stateType, out var scope))
             {
                 _activeScopes.Remove(stateType);
 
-                if (GetScopeLifetime(stateType) == ScopeLifetime.Cached)
+                if (isCached)
                     _cachedScopes[stateType] = scope;
                 else
                     scope.Dispose();
