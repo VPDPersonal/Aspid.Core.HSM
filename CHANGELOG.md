@@ -15,7 +15,7 @@ Initial preview release of **Aspid.Core.HSM** — a Roslyn-powered Hierarchical 
 
 #### Core state model
 - `IState` with `Enter` / `Exit` hooks (default no-op) and `EmptyState` as the machine's initial state.
-- `IChildState` (`Type ParentState`) expressing the parent→child hierarchy, driven by `[ParentState(typeof(Parent))]` (`[ParentState(null)]` marks a root state) — the `IChildState` implementation is source-generated onto the `partial` state class.
+- `IChildState` / `IChildState<TParent>` expressing the parent→child hierarchy: a child state implements `IChildState<TParent>`, whose default interface member returns `typeof(TParent)` as `ParentState` — no attribute and no generator involved. A root state implements `IState` only.
 - `IExtensionState` / `[ExtensionFor]` for composing extra behaviour onto an existing state without subclassing.
 - `IStateScope` and `ScopeLifetime` / `[ScopeLifetime]` for scoping resources to a state's active lifetime.
 
@@ -31,9 +31,11 @@ Initial preview release of **Aspid.Core.HSM** — a Roslyn-powered Hierarchical 
 - `MonoStateMachine` wiring the machine (including its async enter/exit path) to the Unity `MonoBehaviour` lifecycle.
 
 #### Source generators
-- `ChildStateGenerator` (triggered by `[ParentState]`) — emits the `IChildState` (or root-state) implementation on a `partial`, non-`static` class.
-- `ControllersGroupGenerator` (triggered by `[ControllerGroup]`) — emits the controller-aggregation plumbing, honouring `[ReverseExecute]` and `[Async]` on group methods.
-- Both ship precompiled in the package as `Aspid.Core.HSM.Generators.dll` so Unity picks them up without a separate build.
+Three Roslyn incremental generators, each triggered via an attribute on a `partial` class (a non-`partial` target is skipped and implements the interface by hand instead):
+- `ControllersGroupGenerator` (`[ControllerGroup]`) — emits the controller-aggregation plumbing, honouring `[ReverseExecute]`, `[AsyncOf]` and `[AsyncMode]` (`AsyncExecutionMode`) on group methods.
+- `TransitionGenerator` (`[Transition(typeof(Source), typeof(Target))]`) — emits `ITransition.SourceState` / `TargetState`; the attribute-based alternative to implementing `ITransition<TSource, TTarget>` by hand.
+- `ExtensionStateGenerator` (`[ExtensionFor(typeof(A), typeof(B), …)]`) — emits `IExtensionState.CanAttachTo` as `hostState is A or B`.
+- All ship precompiled in the package as `Aspid.Core.HSM.Generators.dll` so Unity picks them up without a separate build.
 
 #### Package
 - `Aspid.Core.HSM` (framework) and `Aspid.Core.HSM.Unity` (Unity runtime) assemblies.
