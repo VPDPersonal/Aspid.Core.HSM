@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "tech.aspid.fasttools": "https://github.com/VPDPersonal/Aspid.FastTools.git#upm-preview",
     "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
     "com.unity.ai.navigation": "2.0.11",
     "com.unity.collab-proxy": "2.11.4",

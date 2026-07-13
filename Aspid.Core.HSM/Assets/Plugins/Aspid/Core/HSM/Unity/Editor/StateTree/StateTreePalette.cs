@@ -1,0 +1,56 @@
+using UnityEngine;
+
+// ReSharper disable once CheckNamespace
+namespace Aspid.Core.HSM.Editor
+{
+	/// <summary>
+	/// Общая палитра окна HSM State Tree в духе тёмной темы Aspid.FastTools:
+	/// цвета канваса, панелей, нод, подсветки активной цепочки и выделения,
+	/// а также акцентные цвета уровней глубины дерева.
+	/// </summary>
+	public static class StateTreePalette
+	{
+		public static readonly Color canvasBackground = new(0.055f, 0.055f, 0.055f);
+		public static readonly Color gridLine = new(0.09f, 0.09f, 0.09f);
+		public static readonly Color gridMajorLine = new(0.125f, 0.125f, 0.125f);
+
+		public static readonly Color panelBackground = new(0.118f, 0.118f, 0.118f);
+		public static readonly Color panelBorder = new(0.176f, 0.176f, 0.176f);
+		public static readonly Color cardBackground = new(0.157f, 0.157f, 0.157f);
+		public static readonly Color cardBorder = new(0.216f, 0.216f, 0.216f);
+
+		public static readonly Color textPrimary = new(0.85f, 0.85f, 0.85f);
+		public static readonly Color textSecondary = new(0.61f, 0.61f, 0.61f);
+		public static readonly Color textDim = new(0.45f, 0.45f, 0.45f);
+
+		public static readonly Color nodeBackground = new(0.165f, 0.165f, 0.165f);
+		public static readonly Color nodeBackgroundHover = new(0.204f, 0.204f, 0.204f);
+		public static readonly Color nodeBorder = new(0.302f, 0.302f, 0.302f);
+		public static readonly Color nodeBorderHover = new(0.45f, 0.45f, 0.45f);
+
+		public static readonly Color selectionBorder = new(0.267f, 0.529f, 0.878f);
+		public static readonly Color activeBackground = new(0.047f, 0.255f, 0.118f);
+		public static readonly Color activeBorder = new(0.47f, 0.92f, 0.57f);
+		public static readonly Color activeText = new(0.706f, 1f, 0.784f);
+
+		public static readonly Color edge = new(0.27f, 0.27f, 0.27f);
+		public static readonly Color activeEdge = new(0.47f, 0.92f, 0.57f);
+
+		private static readonly Color[] s_depthColors =
+		{
+			new(0.639f, 0.525f, 0.906f),
+			new(0.353f, 0.635f, 0.937f),
+			new(0.302f, 0.788f, 0.741f),
+			new(0.949f, 0.671f, 0.353f),
+			new(0.918f, 0.494f, 0.663f),
+			new(0.757f, 0.827f, 0.427f)
+		};
+
+		/// <summary>
+		/// Возвращает акцентный цвет для уровня глубины дерева (циклически по палитре).
+		/// </summary>
+		/// <param name="depth">Глубина узла, 0 — корень.</param>
+		public static Color GetDepthColor(int depth) =>
+			s_depthColors[Mathf.Abs(depth) % s_depthColors.Length];
+	}
+}
