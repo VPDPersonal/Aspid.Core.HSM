@@ -20,6 +20,7 @@ namespace Aspid.Core.HSM.Editor
 	{
 		private const long ActivePollIntervalMs = 200;
 		private const string DirectionPrefsKey = "Aspid.HSM.StateTree.Direction";
+		private const string EdgeStylePrefsKey = "Aspid.HSM.StateTree.EdgeStyle";
 		private const string HistoryPrefsKey = "Aspid.HSM.StateTree.HistoryVisible";
 
 		private readonly Dictionary<Type, StateTreeNodeElement> m_nodeElements = new();
@@ -32,8 +33,10 @@ namespace Aspid.Core.HSM.Editor
 		private Label m_statusLabel;
 		private Label m_extensionsLabel;
 		private Button m_directionButton;
+		private Button m_edgeStyleButton;
 		private MonoStateMachine m_stateMachine;
 		private StateTreeLayoutDirection m_direction;
+		private StateTreeEdgeStyle m_edgeStyle;
 		private Type m_selectedType;
 		private string m_lastLeafName;
 
@@ -47,6 +50,7 @@ namespace Aspid.Core.HSM.Editor
 		private void CreateGUI()
 		{
 			m_direction = (StateTreeLayoutDirection)EditorPrefs.GetInt(DirectionPrefsKey, 0);
+			m_edgeStyle = (StateTreeEdgeStyle)EditorPrefs.GetInt(EdgeStylePrefsKey, 0);
 
 			BuildUi();
 			RebuildGraph();
@@ -109,6 +113,10 @@ namespace Aspid.Core.HSM.Editor
 				.SetText(GetDirectionCaption())
 				.AddClicked(CycleDirection);
 
+			m_edgeStyleButton = new Button()
+				.SetText(GetEdgeStyleCaption())
+				.AddClicked(CycleEdgeStyle);
+
 			return new VisualElement()
 				.SetFlexDirection(FlexDirection.Row)
 				.SetHeight(24f)
@@ -120,6 +128,7 @@ namespace Aspid.Core.HSM.Editor
 						.SetText("Refresh")
 						.AddClicked(RebuildGraph),
 					m_directionButton,
+					m_edgeStyleButton,
 					new Button()
 						.SetText("Сброс разметки")
 						.AddClicked(ClearCustomLayout),
@@ -140,7 +149,7 @@ namespace Aspid.Core.HSM.Editor
 			m_nodeElements.Clear();
 			m_activeTypes.Clear();
 
-			m_edges = new StateTreeEdgesElement(m_roots, m_direction);
+			m_edges = new StateTreeEdgesElement(m_roots, m_direction, m_edgeStyle);
 			m_canvas.AddChild(m_edges
 				.SetPosition(Position.Absolute)
 				.SetLeft(0f)
@@ -262,6 +271,22 @@ namespace Aspid.Core.HSM.Editor
 				StateTreeLayoutDirection.TopDown => "Вид: сверху вниз",
 				StateTreeLayoutDirection.LeftToRight => "Вид: слева направо",
 				_ => "Вид: радиальный"
+			};
+
+		private void CycleEdgeStyle()
+		{
+			m_edgeStyle = (StateTreeEdgeStyle)(((int)m_edgeStyle + 1) % 3);
+			EditorPrefs.SetInt(EdgeStylePrefsKey, (int)m_edgeStyle);
+			m_edgeStyleButton.SetText(GetEdgeStyleCaption());
+			m_edges?.SetStyle(m_edgeStyle);
+		}
+
+		private string GetEdgeStyleCaption() =>
+			m_edgeStyle switch
+			{
+				StateTreeEdgeStyle.Straight => "Линии: прямые",
+				StateTreeEdgeStyle.Orthogonal => "Линии: ортогональные",
+				_ => "Линии: кривые"
 			};
 
 		private void ClearCustomLayout()
