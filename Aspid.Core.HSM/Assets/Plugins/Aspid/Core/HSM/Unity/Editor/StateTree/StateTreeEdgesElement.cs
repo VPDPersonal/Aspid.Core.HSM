@@ -10,14 +10,22 @@ namespace Aspid.Core.HSM.Editor
 	/// Слой рёбер графа HSM: рисует связи родитель-ребёнок через Painter2D
 	/// в выбранном стиле (Безье, прямая или ортогональная), выбирая грани нод
 	/// адаптивно и подсвечивая рёбра, оба конца которых входят в активную цепочку.
+	/// По активным рёбрам от родителя к ребёнку бежит светящийся бегунок.
 	/// </summary>
 	public sealed class StateTreeEdgesElement : VisualElement
 	{
 		private const float OrthogonalPadding = 16f;
+		private const int BezierSamples = 32;
+		private const float RunnerSpeed = 90f;
+		private const float RunnerRadius = 3f;
+		private const float RunnerGlowRadius = 6.5f;
+		private const long RunnerFrameIntervalMs = 33;
 
 		private readonly List<StateTreeNode> m_roots;
 		private readonly StateTreeLayoutDirection m_direction;
 		private readonly HashSet<Type> m_activeTypes = new();
+		private readonly List<Vector2> m_pathBuffer = new();
+		private readonly IVisualElementScheduledItem m_runnerAnimation;
 		private StateTreeEdgeStyle m_style;
 
 		public StateTreeEdgesElement(List<StateTreeNode> roots, StateTreeLayoutDirection direction, StateTreeEdgeStyle style)
@@ -27,6 +35,9 @@ namespace Aspid.Core.HSM.Editor
 			m_style = style;
 			pickingMode = PickingMode.Ignore;
 			generateVisualContent += OnGenerateVisualContent;
+
+			m_runnerAnimation = schedule.Execute(MarkDirtyRepaint).Every(RunnerFrameIntervalMs);
+			m_runnerAnimation.Pause();
 		}
 
 		public void SetStyle(StateTreeEdgeStyle style)
@@ -39,6 +50,10 @@ namespace Aspid.Core.HSM.Editor
 		{
 			m_activeTypes.Clear();
 			m_activeTypes.UnionWith(activeTypes);
+
+			if (m_activeTypes.Count > 0) m_runnerAnimation.Resume();
+			else m_runnerAnimation.Pause();
+
 			MarkDirtyRepaint();
 		}
 
@@ -64,36 +79,120 @@ namespace Aspid.Core.HSM.Editor
 
 		private void DrawEdge(Painter2D painter, Rect from, Rect to, bool isActive)
 		{
-			painter.strokeColor = isActive ? StateTreePalette.activeEdge : StateTreePalette.edge;
-			painter.lineWidth = isActive ? 2.5f : 1.5f;
-
 			Vector2 start = GetAnchor(from, to, out Vector2 startNormal);
 			Vector2 end = GetAnchor(to, from, out Vector2 endNormal);
 
-			painter.BeginPath();
-			painter.MoveTo(start);
+			m_pathBuffer.Clear();
+			m_pathBuffer.Add(start);
 
 			switch (m_style)
 			{
 				case StateTreeEdgeStyle.Straight:
-					painter.LineTo(end);
+					m_pathBuffer.Add(end);
 					break;
 
 				case StateTreeEdgeStyle.Orthogonal:
-					DrawOrthogonalPath(painter, start, startNormal, end, endNormal);
+					AppendOrthogonalPath(m_pathBuffer, start, startNormal, end, endNormal);
 					break;
 
 				default:
-					float tangentLength = Mathf.Clamp(Vector2.Distance(start, end) * 0.4f, 16f, 96f);
-					painter.BezierCurveTo(start + startNormal * tangentLength, end + endNormal * tangentLength, end);
+					AppendBezierPath(m_pathBuffer, start, startNormal, end, endNormal);
 					break;
 			}
 
+			painter.strokeColor = isActive ? StateTreePalette.activeEdge : StateTreePalette.edge;
+			painter.lineWidth = isActive ? 2.5f : 1.5f;
+
+			painter.BeginPath();
+			painter.MoveTo(m_pathBuffer[0]);
+
+			for (var i = 1; i < m_pathBuffer.Count; i++)
+			{
+				painter.LineTo(m_pathBuffer[i]);
+			}
+
 			painter.Stroke();
+
+			if (isActive) DrawRunner(painter, m_pathBuffer);
 		}
 
-		private static void DrawOrthogonalPath(
-			Painter2D painter,
+		/// <summary>
+		/// Рисует бегунок — светящуюся точку, циклически бегущую вдоль полилинии
+		/// от родителя к ребёнку. Скорость постоянна в пикселях, поэтому на длинных
+		/// рёбрах цикл дольше, но темп движения одинаков по всему дереву.
+		/// </summary>
+		private static void DrawRunner(Painter2D painter, List<Vector2> path)
+		{
+			var totalLength = 0f;
+
+			for (var i = 1; i < path.Count; i++)
+			{
+				totalLength += Vector2.Distance(path[i - 1], path[i]);
+			}
+
+			if (totalLength <= Mathf.Epsilon) return;
+
+			var distance = (float)(UnityEditor.EditorApplication.timeSinceStartup * RunnerSpeed % totalLength);
+			Vector2 position = path[^1];
+
+			for (var i = 1; i < path.Count; i++)
+			{
+				float segmentLength = Vector2.Distance(path[i - 1], path[i]);
+
+				if (distance <= segmentLength)
+				{
+					position = Vector2.Lerp(path[i - 1], path[i], segmentLength > 0f ? distance / segmentLength : 0f);
+					break;
+				}
+
+				distance -= segmentLength;
+			}
+
+			Color glow = StateTreePalette.activeEdgeRunner;
+			glow.a = 0.25f;
+
+			painter.fillColor = glow;
+			painter.BeginPath();
+			painter.Arc(position, RunnerGlowRadius, 0f, 360f);
+			painter.ClosePath();
+			painter.Fill();
+
+			painter.fillColor = StateTreePalette.activeEdgeRunner;
+			painter.BeginPath();
+			painter.Arc(position, RunnerRadius, 0f, 360f);
+			painter.ClosePath();
+			painter.Fill();
+		}
+
+		/// <summary>
+		/// Сэмплирует кубическую кривую Безье (та же геометрия, что раньше рисовал
+		/// BezierCurveTo) в полилинию, чтобы по ней можно было вести бегунок.
+		/// </summary>
+		private static void AppendBezierPath(
+			List<Vector2> path,
+			Vector2 start,
+			Vector2 startNormal,
+			Vector2 end,
+			Vector2 endNormal)
+		{
+			float tangentLength = Mathf.Clamp(Vector2.Distance(start, end) * 0.4f, 16f, 96f);
+			Vector2 control1 = start + startNormal * tangentLength;
+			Vector2 control2 = end + endNormal * tangentLength;
+
+			for (var i = 1; i <= BezierSamples; i++)
+			{
+				float t = i / (float)BezierSamples;
+				float u = 1f - t;
+
+				path.Add(u * u * u * start
+					+ 3f * u * u * t * control1
+					+ 3f * u * t * t * control2
+					+ t * t * t * end);
+			}
+		}
+
+		private static void AppendOrthogonalPath(
+			List<Vector2> path,
 			Vector2 start,
 			Vector2 startNormal,
 			Vector2 end,
@@ -102,7 +201,7 @@ namespace Aspid.Core.HSM.Editor
 			Vector2 exit = start + startNormal * OrthogonalPadding;
 			Vector2 entry = end + endNormal * OrthogonalPadding;
 
-			painter.LineTo(exit);
+			path.Add(exit);
 
 			bool startHorizontal = startNormal.x != 0f;
 			bool endHorizontal = endNormal.x != 0f;
@@ -113,26 +212,26 @@ namespace Aspid.Core.HSM.Editor
 				if (startHorizontal)
 				{
 					float middleX = (exit.x + entry.x) * 0.5f;
-					painter.LineTo(new Vector2(middleX, exit.y));
-					painter.LineTo(new Vector2(middleX, entry.y));
+					path.Add(new Vector2(middleX, exit.y));
+					path.Add(new Vector2(middleX, entry.y));
 				}
 				else
 				{
 					float middleY = (exit.y + entry.y) * 0.5f;
-					painter.LineTo(new Vector2(exit.x, middleY));
-					painter.LineTo(new Vector2(entry.x, middleY));
+					path.Add(new Vector2(exit.x, middleY));
+					path.Add(new Vector2(entry.x, middleY));
 				}
 			}
 			else
 			{
 				// Разные оси: единственный угол на пересечении направлений.
-				painter.LineTo(startHorizontal
+				path.Add(startHorizontal
 					? new Vector2(entry.x, exit.y)
 					: new Vector2(exit.x, entry.y));
 			}
 
-			painter.LineTo(entry);
-			painter.LineTo(end);
+			path.Add(entry);
+			path.Add(end);
 		}
 
 		/// <summary>

@@ -29,12 +29,13 @@ namespace Aspid.Core.HSM.Editor
 		public static readonly Color nodeBorderHover = new(0.45f, 0.45f, 0.45f);
 
 		public static readonly Color selectionBorder = new(0.267f, 0.529f, 0.878f);
-		public static readonly Color activeBackground = new(0.047f, 0.255f, 0.118f);
-		public static readonly Color activeBorder = new(0.47f, 0.92f, 0.57f);
-		public static readonly Color activeText = new(0.706f, 1f, 0.784f);
+		public static readonly Color activeBackground = new(0.333f, 0.216f, 0.039f);
+		public static readonly Color activeBorder = new(0.961f, 0.725f, 0.333f);
+		public static readonly Color activeText = new(1f, 0.922f, 0.686f);
 
 		public static readonly Color edge = new(0.27f, 0.27f, 0.27f);
-		public static readonly Color activeEdge = new(0.47f, 0.92f, 0.57f);
+		public static readonly Color activeEdge = new(0.961f, 0.725f, 0.333f);
+		public static readonly Color activeEdgeRunner = new(1f, 0.922f, 0.686f);
 
 		private static readonly Color[] s_depthColors =
 		{
