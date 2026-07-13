@@ -1,7 +1,9 @@
 using System;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Aspid.FastTools.Types.Editors;
 using Aspid.FastTools.UIElements;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -152,6 +154,23 @@ namespace Aspid.Core.HSM.Editor
 		{
 			var section = new VisualElement();
 			bool isEmpty = true;
+			bool isControllerGroup = false;
+
+			// [ControllerGroup] emits explicit interface implementations that dispatch to private
+			// "__controllerN" fields holding the actual inner controllers (see ControllerGroupBody).
+			// List those instead of the group class itself, otherwise controllers registered via
+			// AddControllers(...) never show up.
+			foreach (FieldInfo field in stateType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
+			{
+				if (!IsGeneratedControllerGroupField(field) || !typeof(IController).IsAssignableFrom(field.FieldType))
+				{
+					continue;
+				}
+
+				isEmpty = false;
+				isControllerGroup = true;
+				section.AddChild(BuildControllerRow(field.FieldType.Name, field.FieldType));
+			}
 
 			foreach (Type nested in stateType.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
 			{
@@ -164,7 +183,7 @@ namespace Aspid.Core.HSM.Editor
 				section.AddChild(BuildControllerRow(nested.Name, nested));
 			}
 
-			if (typeof(IController).IsAssignableFrom(stateType))
+			if (!isControllerGroup && typeof(IController).IsAssignableFrom(stateType))
 			{
 				isEmpty = false;
 				section.AddChild(BuildControllerRow("(сам стейт)", stateType));
@@ -178,6 +197,25 @@ namespace Aspid.Core.HSM.Editor
 			}
 
 			return section;
+		}
+
+		private static bool IsGeneratedControllerGroupField(FieldInfo field)
+		{
+			if (!Regex.IsMatch(field.Name, @"^__controller\d+$"))
+			{
+				return false;
+			}
+
+			foreach (var attribute in field.GetCustomAttributes(typeof(System.CodeDom.Compiler.GeneratedCodeAttribute), false))
+			{
+				if (attribute is System.CodeDom.Compiler.GeneratedCodeAttribute generated
+					&& generated.Tool == "Aspid.Core.HSM.Generators.ControllerGroupGenerator")
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		private VisualElement BuildControllerRow(string title, Type controllerType)
@@ -195,16 +233,20 @@ namespace Aspid.Core.HSM.Editor
 				}
 
 				string role = controllerInterface.Name.TrimStart('I').Replace("Controller", string.Empty);
-				badges.AddChild(BuildBadge(role));
+				MethodInfo[] methods = controllerInterface.GetMethods();
+
+				badges.AddChild(BuildBadge(role,
+					methods.Length > 0 ? () => OpenControllerMethod(controllerType, controllerInterface, methods[0]) : null));
 			}
+
+			var titleLabel = new Label(title)
+				.SetFontSize(11)
+				.SetColor(StateTreePalette.selectionBorder);
+			titleLabel.RegisterCallback<ClickEvent>(_ => controllerType.OpenInScriptEditor());
 
 			return new VisualElement()
 				.SetMarginBottom(4f)
-				.AddChildren(
-					new Label(title)
-						.SetFontSize(11)
-						.SetColor(StateTreePalette.textPrimary),
-					badges);
+				.AddChildren(titleLabel, badges);
 		}
 
 		private VisualElement BuildRuntimeSection()
@@ -270,8 +312,9 @@ namespace Aspid.Core.HSM.Editor
 				.SetBorderWidthBottom(1f)
 				.SetPaddingBottom(2f);
 
-		private VisualElement BuildBadge(string text) =>
-			new Label(text)
+		private VisualElement BuildBadge(string text, Action onClick = null)
+		{
+			var badge = new Label(text)
 				.SetFontSize(9)
 				.SetColor(StateTreePalette.textSecondary)
 				.SetBackgroundColor(StateTreePalette.cardBackground)
@@ -282,5 +325,76 @@ namespace Aspid.Core.HSM.Editor
 				.SetPaddingY(1f)
 				.SetMarginRight(3f)
 				.SetMarginTop(2f);
+
+			if (onClick != null)
+			{
+				badge.RegisterCallback<ClickEvent>(_ => onClick());
+			}
+
+			return badge;
+		}
+
+		/// <summary>
+		/// Opens the controller's script at the line where it implements the given controller
+		/// interface method. Falls back to the type declaration line if the method line can't be
+		/// located (e.g. minified/generated source, or the member is expression-bodied on one line
+		/// shared with other text the regex doesn't expect).
+		/// </summary>
+		private static void OpenControllerMethod(Type controllerType, Type controllerInterface, MethodInfo method)
+		{
+			MonoScript script = controllerType.FindMonoScript();
+
+			if (script is null)
+			{
+				Debug.LogWarning($"MonoScript for type {controllerType.AssemblyQualifiedName} not found.");
+				return;
+			}
+
+			int line = FindMethodLineNumber(script.text, controllerInterface.Name, method.Name);
+			AssetDatabase.OpenAsset(script, line);
+		}
+
+		private static int FindMethodLineNumber(string text, string interfaceName, string methodName)
+		{
+			if (string.IsNullOrEmpty(text))
+			{
+				return 1;
+			}
+
+			string[] lines = text.Split('\n');
+
+			// Prefer an explicit interface implementation (e.g. "void IUpdateController.Update(").
+			var explicitRegex = new Regex($@"\b{Regex.Escape(interfaceName)}\.{Regex.Escape(methodName)}\s*\(");
+			for (var i = 0; i < lines.Length; i++)
+			{
+				if (explicitRegex.IsMatch(lines[i]))
+				{
+					return i + 1;
+				}
+			}
+
+			// Fall back to a regular member declaration (e.g. "public void Update(").
+			var declRegex = new Regex(
+				$@"\b(public|private|protected|internal|static|virtual|override|async)\b[^;{{]*\b{Regex.Escape(methodName)}\s*\(");
+			for (var i = 0; i < lines.Length; i++)
+			{
+				if (declRegex.IsMatch(lines[i]))
+				{
+					return i + 1;
+				}
+			}
+
+			// Last resort: first occurrence of the method name at all.
+			var plainRegex = new Regex($@"\b{Regex.Escape(methodName)}\s*\(");
+			for (var i = 0; i < lines.Length; i++)
+			{
+				if (plainRegex.IsMatch(lines[i]))
+				{
+					return i + 1;
+				}
+			}
+
+			return 1;
+		}
 	}
 }
