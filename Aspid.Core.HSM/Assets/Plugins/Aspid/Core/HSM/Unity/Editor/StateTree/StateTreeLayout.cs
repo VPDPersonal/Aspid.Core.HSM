@@ -85,6 +85,11 @@ namespace Aspid.Core.HSM.Editor
 			Vector2 point = center + new Vector2(Mathf.Cos(midAngle), Mathf.Sin(midAngle)) * radius;
 			node.position = new Rect(point.x - NodeWidth * 0.5f, point.y - NodeHeight * 0.5f, NodeWidth, NodeHeight);
 
+			if (node.isCollapsed)
+			{
+				return;
+			}
+
 			int leaves = LeafCount(node);
 			float childFrom = fromAngle;
 
@@ -98,7 +103,7 @@ namespace Aspid.Core.HSM.Editor
 
 		private static int LeafCount(StateTreeNode node)
 		{
-			if (node.children.Count == 0)
+			if (node.isCollapsed || node.children.Count == 0)
 			{
 				return 1;
 			}
@@ -123,6 +128,11 @@ namespace Aspid.Core.HSM.Editor
 				? new Rect(nodeCross, main, NodeWidth, NodeHeight)
 				: new Rect(main, nodeCross, NodeWidth, NodeHeight);
 
+			if (node.isCollapsed)
+			{
+				return;
+			}
+
 			float childrenSize = ChildrenCrossSize(node, direction);
 			float childCross = cross + (subtreeSize - childrenSize) * 0.5f;
 
@@ -135,7 +145,7 @@ namespace Aspid.Core.HSM.Editor
 
 		private static float SubtreeCrossSize(StateTreeNode node, StateTreeLayoutDirection direction)
 		{
-			if (node.children.Count == 0)
+			if (node.isCollapsed || node.children.Count == 0)
 			{
 				return GetCrossSize(direction);
 			}
@@ -145,7 +155,7 @@ namespace Aspid.Core.HSM.Editor
 
 		private static float ChildrenCrossSize(StateTreeNode node, StateTreeLayoutDirection direction)
 		{
-			if (node.children.Count == 0)
+			if (node.isCollapsed || node.children.Count == 0)
 			{
 				return 0f;
 			}
@@ -161,6 +171,11 @@ namespace Aspid.Core.HSM.Editor
 
 		private static int MaxDepth(StateTreeNode node)
 		{
+			if (node.isCollapsed)
+			{
+				return 0;
+			}
+
 			int depth = 0;
 			foreach (StateTreeNode child in node.children)
 			{

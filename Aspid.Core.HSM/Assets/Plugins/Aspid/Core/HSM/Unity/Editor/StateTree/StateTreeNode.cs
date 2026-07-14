@@ -19,9 +19,26 @@ namespace Aspid.Core.HSM.Editor
 		public int depth { get; set; }
 		public Rect position { get; set; }
 
+		/// <summary>
+		/// When <c>true</c>, the node's subtree is hidden: the layout treats the node
+		/// as a leaf, and its descendants get no elements or edges on the canvas.
+		/// </summary>
+		public bool isCollapsed { get; set; }
+
 		public StateTreeNode(Type stateType)
 		{
 			this.stateType = stateType;
+		}
+
+		public int CountDescendants()
+		{
+			var count = 0;
+			foreach (StateTreeNode child in children)
+			{
+				count += 1 + child.CountDescendants();
+			}
+
+			return count;
 		}
 	}
 }

@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using Aspid.FastTools.Types.Editors;
 using Aspid.FastTools.UIElements;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -22,10 +24,14 @@ namespace Aspid.Core.HSM.Editor
 		private const string DirectionPrefsKey = "Aspid.HSM.StateTree.Direction";
 		private const string EdgeStylePrefsKey = "Aspid.HSM.StateTree.EdgeStyle";
 		private const string HistoryPrefsKey = "Aspid.HSM.StateTree.HistoryVisible";
+		private const string TransitionsPrefsKey = "Aspid.HSM.StateTree.TransitionsVisible";
+		private const string CollapsedPrefsKey = "Aspid.HSM.StateTree.Collapsed";
 
 		private readonly Dictionary<Type, StateTreeNodeElement> m_nodeElements = new();
 		private readonly HashSet<Type> m_activeTypes = new();
+		private readonly HashSet<string> m_collapsedTypes = new();
 		private List<StateTreeNode> m_roots;
+		private List<StateTreeTransition> m_transitions;
 		private StateTreeEdgesElement m_edges;
 		private StateTreeCanvasElement m_canvas;
 		private StateTreeInspectorElement m_inspector;
@@ -34,9 +40,11 @@ namespace Aspid.Core.HSM.Editor
 		private Label m_extensionsLabel;
 		private Button m_directionButton;
 		private Button m_edgeStyleButton;
+		private Button m_exportButton;
 		private MonoStateMachine m_stateMachine;
 		private StateTreeLayoutDirection m_direction;
 		private StateTreeEdgeStyle m_edgeStyle;
+		private bool m_transitionsVisible;
 		private Type m_selectedType;
 		private string m_lastLeafName;
 
@@ -51,6 +59,13 @@ namespace Aspid.Core.HSM.Editor
 		{
 			m_direction = (StateTreeLayoutDirection)EditorPrefs.GetInt(DirectionPrefsKey, 0);
 			m_edgeStyle = (StateTreeEdgeStyle)EditorPrefs.GetInt(EdgeStylePrefsKey, 0);
+			m_transitionsVisible = EditorPrefs.GetBool(TransitionsPrefsKey, true);
+
+			foreach (string typeName in EditorPrefs.GetString(CollapsedPrefsKey, string.Empty)
+				.Split(';', StringSplitOptions.RemoveEmptyEntries))
+			{
+				m_collapsedTypes.Add(typeName);
+			}
 
 			BuildUi();
 			RebuildGraph();
@@ -117,6 +132,22 @@ namespace Aspid.Core.HSM.Editor
 				.SetText(GetEdgeStyleCaption())
 				.AddClicked(CycleEdgeStyle);
 
+			var transitionsToggle = new Toggle { text = "Transitions", value = m_transitionsVisible };
+			transitionsToggle
+				.SetFontSize(11)
+				.SetMarginX(6f)
+				.SetAlignSelf(Align.Center);
+			transitionsToggle.RegisterValueChangedCallback(change =>
+			{
+				m_transitionsVisible = change.newValue;
+				EditorPrefs.SetBool(TransitionsPrefsKey, m_transitionsVisible);
+				m_edges?.SetTransitionsVisible(m_transitionsVisible);
+			});
+
+			m_exportButton = new Button()
+				.SetText("Export")
+				.AddClicked(ShowExportMenu);
+
 			return new VisualElement()
 				.SetFlexDirection(FlexDirection.Row)
 				.SetHeight(24f)
@@ -129,12 +160,14 @@ namespace Aspid.Core.HSM.Editor
 						.AddClicked(RebuildGraph),
 					m_directionButton,
 					m_edgeStyleButton,
+					transitionsToggle,
 					new Button()
 						.SetText("Reset Layout")
 						.AddClicked(ClearCustomLayout),
 					new Button()
 						.SetText("History")
 						.AddClicked(ToggleHistory),
+					m_exportButton,
 					new VisualElement().SetFlexGrow(1f),
 					m_statusLabel);
 		}
@@ -142,6 +175,8 @@ namespace Aspid.Core.HSM.Editor
 		private void RebuildGraph()
 		{
 			m_roots = StateTreeGraphBuilder.Build();
+			m_transitions = StateTreeGraphBuilder.BuildTransitions();
+			ApplyCollapsedState(m_roots);
 			Vector2 canvasSize = StateTreeLayout.Arrange(m_roots, m_direction);
 			ApplyCustomLayout(m_roots);
 
@@ -149,7 +184,7 @@ namespace Aspid.Core.HSM.Editor
 			m_nodeElements.Clear();
 			m_activeTypes.Clear();
 
-			m_edges = new StateTreeEdgesElement(m_roots, m_direction, m_edgeStyle);
+			m_edges = new StateTreeEdgesElement(m_roots, m_transitions, m_direction, m_edgeStyle, m_transitionsVisible);
 			m_canvas.AddChild(m_edges
 				.SetPosition(Position.Absolute)
 				.SetLeft(0f)
@@ -165,6 +200,21 @@ namespace Aspid.Core.HSM.Editor
 			RestoreSelection();
 			m_canvas.FrameContent(canvasSize);
 			PollActiveStates();
+		}
+
+		private void ApplyCollapsedState(List<StateTreeNode> roots)
+		{
+			var pending = new Stack<StateTreeNode>(roots);
+			while (pending.Count > 0)
+			{
+				StateTreeNode node = pending.Pop();
+				node.isCollapsed = node.children.Count > 0 && m_collapsedTypes.Contains(node.stateType.FullName);
+
+				foreach (StateTreeNode child in node.children)
+				{
+					pending.Push(child);
+				}
+			}
 		}
 
 		private void ApplyCustomLayout(List<StateTreeNode> roots)
@@ -198,15 +248,33 @@ namespace Aspid.Core.HSM.Editor
 			element.onMoved += _ => m_edges.MarkDirtyRepaint();
 			element.onDragCompleted += moved =>
 				StateTreeLayoutStorage.Save(m_direction, moved.stateType, moved.position.position);
+			element.onCollapseToggled += ToggleCollapse;
 			element.AddManipulator(new ContextualMenuManipulator(populate => PopulateNodeMenu(populate, node)));
 
 			m_nodeElements[node.stateType] = element;
 			m_canvas.AddChild(element);
 
+			if (node.isCollapsed)
+			{
+				return;
+			}
+
 			foreach (StateTreeNode child in node.children)
 			{
 				CreateNodeElements(child);
 			}
+		}
+
+		private void ToggleCollapse(StateTreeNode node)
+		{
+			string typeName = node.stateType.FullName;
+			if (!m_collapsedTypes.Remove(typeName))
+			{
+				m_collapsedTypes.Add(typeName);
+			}
+
+			EditorPrefs.SetString(CollapsedPrefsKey, string.Join(";", m_collapsedTypes));
+			RebuildGraph();
 		}
 
 		private void PopulateNodeMenu(ContextualMenuPopulateEvent populate, StateTreeNode node)
@@ -224,6 +292,14 @@ namespace Aspid.Core.HSM.Editor
 				_ => ExecuteMachineCommand("TransitionTo", node.stateType),
 				_ => controlStatus);
 			populate.menu.AppendSeparator();
+
+			if (node.children.Count > 0)
+			{
+				populate.menu.AppendAction(
+					node.isCollapsed ? "Expand Subtree" : "Collapse Subtree",
+					_ => ToggleCollapse(node));
+			}
+
 			populate.menu.AppendAction("Open Script", _ => node.stateType.OpenInScriptEditor());
 		}
 
@@ -300,6 +376,79 @@ namespace Aspid.Core.HSM.Editor
 			bool isVisible = m_history.resolvedStyle.display == DisplayStyle.Flex;
 			m_history.SetDisplay(isVisible ? DisplayStyle.None : DisplayStyle.Flex);
 			EditorPrefs.SetBool(HistoryPrefsKey, !isVisible);
+		}
+
+		private void ShowExportMenu()
+		{
+			var menu = new GenericMenu();
+			menu.AddItem(new GUIContent("PNG (current view)…"), false, ExportPng);
+			menu.AddItem(new GUIContent("Mermaid to file…"), false, ExportMermaidToFile);
+			menu.AddItem(new GUIContent("Copy Mermaid to clipboard"), false, CopyMermaidToClipboard);
+			menu.DropDown(m_exportButton.worldBound);
+		}
+
+		private void ExportMermaidToFile()
+		{
+			string path = EditorUtility.SaveFilePanel("Export Mermaid", string.Empty, "HSM_StateTree", "mmd");
+			if (string.IsNullOrEmpty(path))
+			{
+				return;
+			}
+
+			File.WriteAllText(path, StateTreeExporter.BuildMermaid(m_roots, m_transitions, m_direction));
+			m_history.AddMessage($"Mermaid exported: {path}");
+			EditorUtility.RevealInFinder(path);
+		}
+
+		private void CopyMermaidToClipboard()
+		{
+			EditorGUIUtility.systemCopyBuffer = StateTreeExporter.BuildMermaid(m_roots, m_transitions, m_direction);
+			m_history.AddMessage("Mermaid copied to clipboard");
+		}
+
+		private void ExportPng()
+		{
+			string path = EditorUtility.SaveFilePanel("Export PNG", string.Empty, "HSM_StateTree", "png");
+			if (string.IsNullOrEmpty(path))
+			{
+				return;
+			}
+
+			// Give the save dialog time to close and the window a repaint before
+			// reading screen pixels — the capture is literally what is on screen.
+			rootVisualElement.schedule.Execute(() => CaptureCanvasPng(path)).ExecuteLater(150);
+		}
+
+		private void CaptureCanvasPng(string path)
+		{
+			Rect canvasBound = m_canvas.worldBound;
+			Vector2 screenPoint = position.position + canvasBound.position;
+			float pixelsPerPoint = EditorGUIUtility.pixelsPerPoint;
+			int width = Mathf.RoundToInt(canvasBound.width * pixelsPerPoint);
+			int height = Mathf.RoundToInt(canvasBound.height * pixelsPerPoint);
+
+			if (width <= 0 || height <= 0)
+			{
+				m_history.AddMessage("PNG export failed: canvas has no visible area");
+				return;
+			}
+
+			Color[] pixels = InternalEditorUtility.ReadScreenPixel(screenPoint * pixelsPerPoint, width, height);
+			var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+
+			try
+			{
+				texture.SetPixels(pixels);
+				texture.Apply();
+				File.WriteAllBytes(path, texture.EncodeToPNG());
+			}
+			finally
+			{
+				DestroyImmediate(texture);
+			}
+
+			m_history.AddMessage($"PNG exported: {path}");
+			EditorUtility.RevealInFinder(path);
 		}
 
 		private void ExecuteMachineCommand(string methodName, Type stateType)

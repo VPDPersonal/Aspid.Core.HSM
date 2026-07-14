@@ -36,6 +36,7 @@ namespace Aspid.Core.HSM.Editor
 		public static readonly Color edge = new(0.27f, 0.27f, 0.27f);
 		public static readonly Color activeEdge = new(0.961f, 0.725f, 0.333f);
 		public static readonly Color activeEdgeRunner = new(1f, 0.922f, 0.686f);
+		public static readonly Color transitionEdge = new(0.29f, 0.62f, 0.58f);
 
 		private static readonly Color[] s_depthColors =
 		{

@@ -20,6 +20,7 @@ namespace Aspid.Core.HSM.Editor
 		public event Action<StateTreeNode> onSelected;
 		public event Action<StateTreeNode> onMoved;
 		public event Action<StateTreeNode> onDragCompleted;
+		public event Action<StateTreeNode> onCollapseToggled;
 
 		public StateTreeNode node { get; }
 
@@ -65,6 +66,12 @@ namespace Aspid.Core.HSM.Editor
 				.SetJustifyContent(Justify.Center)
 				.AddChildren(m_accentBar, m_label);
 
+			if (treeNode.children.Count > 0)
+			{
+				m_label.SetPaddingRight(20f);
+				this.AddChild(BuildCollapseBadge());
+			}
+
 			style.transitionProperty = new List<StylePropertyName> { "background-color", "border-color" };
 			style.transitionDuration = new List<TimeValue> { new(0.1f), new(0.1f) };
 
@@ -76,6 +83,38 @@ namespace Aspid.Core.HSM.Editor
 			RegisterCallback<PointerDownEvent>(OnPointerDown);
 			RegisterCallback<PointerMoveEvent>(OnPointerMove);
 			RegisterCallback<PointerUpEvent>(OnPointerUp);
+		}
+
+		/// <summary>
+		/// Small clickable indicator on the node's right edge: "▾" when expanded,
+		/// "▸ N" with the hidden-descendant count when collapsed. The pointer-down
+		/// is swallowed so a click never starts a drag or selects the node.
+		/// </summary>
+		private Label BuildCollapseBadge()
+		{
+			Color idleColor = node.isCollapsed ? StateTreePalette.textSecondary : StateTreePalette.textDim;
+
+			var badge = new Label(node.isCollapsed ? $"▸{node.CountDescendants()}" : "▾")
+				.SetPosition(Position.Absolute)
+				.SetRight(4f)
+				.SetTop(0f)
+				.SetBottom(0f)
+				.SetPaddingX(3f)
+				.SetFontSize(10)
+				.SetColor(idleColor)
+				.SetUnityTextAlign(TextAnchor.MiddleCenter)
+				.SetTooltip(node.isCollapsed ? "Expand subtree" : "Collapse subtree");
+
+			badge.RegisterCallback<PointerDownEvent>(pointerEvent => pointerEvent.StopPropagation());
+			badge.RegisterCallback<ClickEvent>(clickEvent =>
+			{
+				clickEvent.StopPropagation();
+				onCollapseToggled?.Invoke(node);
+			});
+			badge.RegisterCallback<PointerEnterEvent>(_ => badge.SetColor(StateTreePalette.textPrimary));
+			badge.RegisterCallback<PointerLeaveEvent>(_ => badge.SetColor(idleColor));
+
+			return badge;
 		}
 
 		public void SetActive(bool isActive)

@@ -11,6 +11,7 @@ namespace Aspid.Core.HSM.Editor
 	/// in the selected style (Bezier, straight, or orthogonal), picking node
 	/// anchors adaptively and highlighting edges whose both ends are in the active chain.
 	/// A glowing runner travels along active edges from parent to child.
+	/// Optionally overlays transitions as dashed arrows between the states they connect.
 	/// </summary>
 	public sealed class StateTreeEdgesElement : VisualElement
 	{
@@ -20,21 +21,41 @@ namespace Aspid.Core.HSM.Editor
 		private const float RunnerRadius = 3f;
 		private const float RunnerGlowRadius = 6.5f;
 		private const long RunnerFrameIntervalMs = 33;
+		private const float DashLength = 6f;
+		private const float DashGapLength = 5f;
+		private const float ArrowLength = 8f;
+		private const float ArrowHalfWidth = 3.5f;
+		private const float SelfLoopRadius = 14f;
 
 		private readonly List<StateTreeNode> m_roots;
+		private readonly List<StateTreeTransition> m_transitions;
+		private readonly Dictionary<Type, StateTreeNode> m_visibleNodes = new();
 		private readonly StateTreeLayoutDirection m_direction;
 		private readonly HashSet<Type> m_activeTypes = new();
 		private readonly List<Vector2> m_pathBuffer = new();
 		private readonly IVisualElementScheduledItem m_runnerAnimation;
 		private StateTreeEdgeStyle m_style;
+		private bool m_transitionsVisible;
 
-		public StateTreeEdgesElement(List<StateTreeNode> roots, StateTreeLayoutDirection direction, StateTreeEdgeStyle style)
+		public StateTreeEdgesElement(
+			List<StateTreeNode> roots,
+			List<StateTreeTransition> transitions,
+			StateTreeLayoutDirection direction,
+			StateTreeEdgeStyle style,
+			bool transitionsVisible)
 		{
 			m_roots = roots;
+			m_transitions = transitions;
 			m_direction = direction;
 			m_style = style;
+			m_transitionsVisible = transitionsVisible;
 			pickingMode = PickingMode.Ignore;
 			generateVisualContent += OnGenerateVisualContent;
+
+			foreach (StateTreeNode root in roots)
+			{
+				RegisterVisibleNodes(root);
+			}
 
 			m_runnerAnimation = schedule.Execute(MarkDirtyRepaint).Every(RunnerFrameIntervalMs);
 			m_runnerAnimation.Pause();
@@ -43,6 +64,12 @@ namespace Aspid.Core.HSM.Editor
 		public void SetStyle(StateTreeEdgeStyle style)
 		{
 			m_style = style;
+			MarkDirtyRepaint();
+		}
+
+		public void SetTransitionsVisible(bool isVisible)
+		{
+			m_transitionsVisible = isVisible;
 			MarkDirtyRepaint();
 		}
 
@@ -57,6 +84,21 @@ namespace Aspid.Core.HSM.Editor
 			MarkDirtyRepaint();
 		}
 
+		private void RegisterVisibleNodes(StateTreeNode node)
+		{
+			m_visibleNodes[node.stateType] = node;
+
+			if (node.isCollapsed)
+			{
+				return;
+			}
+
+			foreach (StateTreeNode child in node.children)
+			{
+				RegisterVisibleNodes(child);
+			}
+		}
+
 		private void OnGenerateVisualContent(MeshGenerationContext context)
 		{
 			Painter2D painter = context.painter2D;
@@ -65,10 +107,20 @@ namespace Aspid.Core.HSM.Editor
 			{
 				DrawSubtreeEdges(painter, root);
 			}
+
+			if (m_transitionsVisible)
+			{
+				DrawTransitions(painter);
+			}
 		}
 
 		private void DrawSubtreeEdges(Painter2D painter, StateTreeNode node)
 		{
+			if (node.isCollapsed)
+			{
+				return;
+			}
+
 			foreach (StateTreeNode child in node.children)
 			{
 				bool isActive = m_activeTypes.Contains(node.stateType) && m_activeTypes.Contains(child.stateType);
@@ -77,7 +129,60 @@ namespace Aspid.Core.HSM.Editor
 			}
 		}
 
+		/// <summary>
+		/// Draws transitions whose both states are visible on the canvas as dashed
+		/// arrows from source to target; a transition into the same state is drawn
+		/// as a small loop on the node's right edge.
+		/// </summary>
+		private void DrawTransitions(Painter2D painter)
+		{
+			foreach (StateTreeTransition transition in m_transitions)
+			{
+				if (!m_visibleNodes.TryGetValue(transition.sourceState, out StateTreeNode source)
+					|| !m_visibleNodes.TryGetValue(transition.targetState, out StateTreeNode target))
+				{
+					continue;
+				}
+
+				if (source == target)
+				{
+					DrawSelfLoop(painter, source.position);
+					continue;
+				}
+
+				BuildEdgePath(source.position, target.position);
+				painter.strokeColor = StateTreePalette.transitionEdge;
+				painter.lineWidth = 1.5f;
+				StrokeDashed(painter, m_pathBuffer);
+				DrawArrowHead(painter, m_pathBuffer);
+			}
+		}
+
 		private void DrawEdge(Painter2D painter, Rect from, Rect to, bool isActive)
+		{
+			BuildEdgePath(from, to);
+
+			painter.strokeColor = isActive ? StateTreePalette.activeEdge : StateTreePalette.edge;
+			painter.lineWidth = isActive ? 2.5f : 1.5f;
+
+			painter.BeginPath();
+			painter.MoveTo(m_pathBuffer[0]);
+
+			for (var i = 1; i < m_pathBuffer.Count; i++)
+			{
+				painter.LineTo(m_pathBuffer[i]);
+			}
+
+			painter.Stroke();
+
+			if (isActive) DrawRunner(painter, m_pathBuffer);
+		}
+
+		/// <summary>
+		/// Fills <see cref="m_pathBuffer"/> with the polyline between two node rects
+		/// in the current edge style — shared by hierarchy edges and transition edges.
+		/// </summary>
+		private void BuildEdgePath(Rect from, Rect to)
 		{
 			Vector2 start = GetAnchor(from, to, out Vector2 startNormal);
 			Vector2 end = GetAnchor(to, from, out Vector2 endNormal);
@@ -99,21 +204,108 @@ namespace Aspid.Core.HSM.Editor
 					AppendBezierPath(m_pathBuffer, start, startNormal, end, endNormal);
 					break;
 			}
+		}
 
-			painter.strokeColor = isActive ? StateTreePalette.activeEdge : StateTreePalette.edge;
-			painter.lineWidth = isActive ? 2.5f : 1.5f;
+		/// <summary>
+		/// Strokes the polyline as a dash pattern continuous across segment boundaries;
+		/// all dashes are emitted as subpaths of a single stroke call.
+		/// </summary>
+		private static void StrokeDashed(Painter2D painter, List<Vector2> path)
+		{
+			const float patternLength = DashLength + DashGapLength;
 
 			painter.BeginPath();
-			painter.MoveTo(m_pathBuffer[0]);
+			var traveled = 0f;
 
-			for (var i = 1; i < m_pathBuffer.Count; i++)
+			for (var i = 1; i < path.Count; i++)
 			{
-				painter.LineTo(m_pathBuffer[i]);
+				Vector2 from = path[i - 1];
+				Vector2 to = path[i];
+				float segmentLength = Vector2.Distance(from, to);
+
+				if (segmentLength <= Mathf.Epsilon)
+				{
+					continue;
+				}
+
+				Vector2 direction = (to - from) / segmentLength;
+				var offset = 0f;
+
+				while (offset < segmentLength)
+				{
+					float patternPosition = (traveled + offset) % patternLength;
+
+					if (patternPosition < DashLength)
+					{
+						float drawLength = Mathf.Min(DashLength - patternPosition, segmentLength - offset);
+						painter.MoveTo(from + direction * offset);
+						painter.LineTo(from + direction * (offset + drawLength));
+						offset += drawLength;
+					}
+					else
+					{
+						offset += Mathf.Min(patternLength - patternPosition, segmentLength - offset);
+					}
+				}
+
+				traveled += segmentLength;
 			}
 
 			painter.Stroke();
+		}
 
-			if (isActive) DrawRunner(painter, m_pathBuffer);
+		private static void DrawArrowHead(Painter2D painter, List<Vector2> path)
+		{
+			Vector2 tip = path[^1];
+			Vector2 previous = tip;
+
+			for (int i = path.Count - 2; i >= 0; i--)
+			{
+				if ((path[i] - tip).sqrMagnitude > 0.01f)
+				{
+					previous = path[i];
+					break;
+				}
+			}
+
+			if (previous == tip)
+			{
+				return;
+			}
+
+			DrawArrowTriangle(painter, tip, (tip - previous).normalized);
+		}
+
+		private static void DrawArrowTriangle(Painter2D painter, Vector2 tip, Vector2 direction)
+		{
+			var normal = new Vector2(-direction.y, direction.x);
+			Vector2 back = tip - direction * ArrowLength;
+
+			painter.fillColor = StateTreePalette.transitionEdge;
+			painter.BeginPath();
+			painter.MoveTo(tip);
+			painter.LineTo(back + normal * ArrowHalfWidth);
+			painter.LineTo(back - normal * ArrowHalfWidth);
+			painter.ClosePath();
+			painter.Fill();
+		}
+
+		private static void DrawSelfLoop(Painter2D painter, Rect rect)
+		{
+			var center = new Vector2(rect.xMax, rect.center.y);
+
+			painter.strokeColor = StateTreePalette.transitionEdge;
+			painter.lineWidth = 1.5f;
+			painter.BeginPath();
+			painter.Arc(center, SelfLoopRadius, -80f, 80f);
+			painter.Stroke();
+
+			// The arrowhead sits at the arc's end and points along the clockwise tangent,
+			// back toward the node.
+			float endRadians = 80f * Mathf.Deg2Rad;
+			Vector2 tip = center + new Vector2(Mathf.Cos(endRadians), Mathf.Sin(endRadians)) * SelfLoopRadius;
+			var tangent = new Vector2(-Mathf.Sin(endRadians), Mathf.Cos(endRadians));
+			DrawArrowTriangle(painter, tip, tangent);
 		}
 
 		/// <summary>
