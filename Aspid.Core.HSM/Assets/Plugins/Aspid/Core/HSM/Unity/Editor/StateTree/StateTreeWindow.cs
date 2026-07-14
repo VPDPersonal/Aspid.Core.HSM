@@ -14,13 +14,15 @@ namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
 	/// Editor window for visualizing the HSM state tree: a node graph on VisualElement
-	/// with three layout modes and node dragging, an inspector for the selected node,
-	/// a transition history, and control of a running <see cref="MonoStateMachine"/>
-	/// (active chain highlighting, ChangeState / TransitionTo) in Play Mode.
+	/// with three layout modes and node dragging, a minimap, state search, focus mode
+	/// around the selected node, an inspector, a transition history, and control of a
+	/// running <see cref="MonoStateMachine"/> (active chain highlighting,
+	/// ChangeState / TransitionTo) in Play Mode.
 	/// </summary>
 	public sealed class StateTreeWindow : EditorWindow
 	{
 		private const long ActivePollIntervalMs = 200;
+		private const float ZoomStep = 1.2f;
 		private const string DirectionPrefsKey = "Aspid.HSM.StateTree.Direction";
 		private const string EdgeStylePrefsKey = "Aspid.HSM.StateTree.EdgeStyle";
 		private const string HistoryPrefsKey = "Aspid.HSM.StateTree.HistoryVisible";
@@ -28,25 +30,34 @@ namespace Aspid.Core.HSM.Editor
 		private const string CollapsedPrefsKey = "Aspid.HSM.StateTree.Collapsed";
 
 		private readonly Dictionary<Type, StateTreeNodeElement> m_nodeElements = new();
+		private readonly Dictionary<Type, int> m_transitionCounts = new();
 		private readonly HashSet<Type> m_activeTypes = new();
 		private readonly HashSet<string> m_collapsedTypes = new();
 		private List<StateTreeNode> m_roots;
 		private List<StateTreeTransition> m_transitions;
 		private StateTreeEdgesElement m_edges;
 		private StateTreeCanvasElement m_canvas;
+		private StateTreeMinimapElement m_minimap;
 		private StateTreeInspectorElement m_inspector;
 		private StateTreeHistoryElement m_history;
 		private Label m_statusLabel;
+		private Label m_searchCountLabel;
 		private Label m_extensionsLabel;
 		private Button m_directionButton;
 		private Button m_edgeStyleButton;
 		private Button m_exportButton;
+		private Button m_zoomLabel;
+		private TextField m_searchField;
+		private Label m_searchPlaceholder;
 		private MonoStateMachine m_stateMachine;
 		private StateTreeLayoutDirection m_direction;
 		private StateTreeEdgeStyle m_edgeStyle;
 		private bool m_transitionsVisible;
 		private Type m_selectedType;
+		private string m_searchQuery = string.Empty;
+		private int m_searchMatchIndex;
 		private string m_lastLeafName;
+		private Vector2 m_canvasSize;
 
 		private bool canControlMachine =>
 			EditorApplication.isPlaying && m_stateMachine != null && m_stateMachine.IsInitialized;
@@ -80,11 +91,19 @@ namespace Aspid.Core.HSM.Editor
 		{
 			m_canvas = new StateTreeCanvasElement();
 			m_canvas.onBackgroundClicked += () => SelectNode(null);
+			m_canvas.onViewChanged += UpdateZoomLabel;
+			m_canvas.RegisterCallback<KeyDownEvent>(OnCanvasKeyDown);
+
+			m_minimap = new StateTreeMinimapElement(m_canvas);
 
 			m_inspector = new StateTreeInspectorElement();
 			m_inspector.onChangeStateRequested += type => ExecuteMachineCommand("ChangeState", type);
 			m_inspector.onTransitionToRequested += type => ExecuteMachineCommand("TransitionTo", type);
-			m_inspector.onNavigateRequested += SelectNode;
+			m_inspector.onNavigateRequested += type =>
+			{
+				SelectNode(type);
+				FrameSelectionOrAll();
+			};
 
 			m_history = new StateTreeHistoryElement();
 			m_history.SetDisplay(EditorPrefs.GetBool(HistoryPrefsKey, true) ? DisplayStyle.Flex : DisplayStyle.None);
@@ -105,7 +124,7 @@ namespace Aspid.Core.HSM.Editor
 
 			var canvasContainer = new VisualElement()
 				.SetFlexGrow(1f)
-				.AddChildren(m_canvas, m_extensionsLabel);
+				.AddChildren(m_canvas, m_extensionsLabel, m_minimap);
 
 			rootVisualElement.AddChildren(
 				BuildToolbar(),
@@ -114,71 +133,190 @@ namespace Aspid.Core.HSM.Editor
 					.SetFlexGrow(1f)
 					.AddChildren(canvasContainer, m_inspector),
 				m_history);
+
+			rootVisualElement.RegisterCallback<KeyDownEvent>(OnGlobalKeyDown, TrickleDown.TrickleDown);
 		}
 
 		private VisualElement BuildToolbar()
 		{
 			m_statusLabel = new Label()
 				.SetFontSize(11)
-				.SetMarginX(8f)
-				.SetAlignSelf(Align.Center)
-				.SetColor(StateTreePalette.textSecondary);
-
-			m_directionButton = new Button()
-				.SetText(GetDirectionCaption())
-				.AddClicked(CycleDirection);
-
-			m_edgeStyleButton = new Button()
-				.SetText(GetEdgeStyleCaption())
-				.AddClicked(CycleEdgeStyle);
-
-			var transitionsToggle = new Toggle { text = "Transitions", value = m_transitionsVisible };
-			transitionsToggle
-				.SetFontSize(11)
 				.SetMarginX(6f)
-				.SetAlignSelf(Align.Center);
-			transitionsToggle.RegisterValueChangedCallback(change =>
-			{
-				m_transitionsVisible = change.newValue;
-				EditorPrefs.SetBool(TransitionsPrefsKey, m_transitionsVisible);
-				m_edges?.SetTransitionsVisible(m_transitionsVisible);
-			});
+				.SetAlignSelf(Align.Center)
+				.SetColor(StateTreePalette.textSecondary)
+				.SetFlexShrink(1f)
+				.SetOverflow(Overflow.Hidden)
+				.SetTextOverflow(TextOverflow.Ellipsis)
+				.SetWhiteSpace(WhiteSpace.NoWrap);
 
-			m_exportButton = new Button()
-				.SetText("Export")
-				.AddClicked(ShowExportMenu);
+			m_directionButton = MakeToolbarButton(GetDirectionCaption(), "Layout direction", ShowDirectionMenu);
+			m_edgeStyleButton = MakeToolbarButton(GetEdgeStyleCaption(), "Edge style", ShowEdgeStyleMenu);
+			m_exportButton = MakeToolbarButton("Export ▾", "Export the graph as PNG or Mermaid", ShowExportMenu);
+
+			Button transitionsChip = MakeToggleChip(
+				"Transitions",
+				"Show transition edges (dashed arrows)",
+				m_transitionsVisible,
+				isOn =>
+				{
+					m_transitionsVisible = isOn;
+					EditorPrefs.SetBool(TransitionsPrefsKey, isOn);
+					m_edges?.SetTransitionsVisible(isOn);
+				});
+
+			Button historyChip = MakeToggleChip(
+				"History",
+				"Show the transition history panel",
+				EditorPrefs.GetBool(HistoryPrefsKey, true),
+				isOn =>
+				{
+					m_history.SetDisplay(isOn ? DisplayStyle.Flex : DisplayStyle.None);
+					EditorPrefs.SetBool(HistoryPrefsKey, isOn);
+				});
+
+			m_searchCountLabel = new Label()
+				.SetFontSize(10)
+				.SetColor(StateTreePalette.textDim)
+				.SetAlignSelf(Align.Center)
+				.SetMarginRight(2f);
+
+			m_searchField = new TextField { selectAllOnFocus = true };
+			m_searchField
+				.SetTooltip("Search states by name (Ctrl+F). Enter jumps to the next match.")
+				.SetWidth(150f)
+				.SetFontSize(11)
+				.SetMarginY(2f)
+				.SetMarginX(2f)
+				.SetAlignSelf(Align.Center);
+			m_searchField.RegisterValueChangedCallback(change => OnSearchChanged(change.newValue));
+			m_searchField.RegisterCallback<KeyDownEvent>(OnSearchKeyDown);
+
+			// This Unity version has no built-in TextField placeholder (ITextEdition came later),
+			// so the hint is an overlay label hidden while the field has text.
+			m_searchPlaceholder = new Label("Search…")
+				.SetPosition(Position.Absolute)
+				.SetLeft(6f)
+				.SetTop(0f)
+				.SetBottom(0f)
+				.SetFontSize(11)
+				.SetColor(StateTreePalette.textDim)
+				.SetUnityTextAlign(TextAnchor.MiddleLeft);
+			m_searchPlaceholder.pickingMode = PickingMode.Ignore;
+			m_searchField.Add(m_searchPlaceholder);
+
+			m_zoomLabel = MakeToolbarButton("100%", "Reset zoom to 100%", () => m_canvas.SetZoom(1f))
+				.SetMinWidth(44f);
 
 			return new VisualElement()
 				.SetFlexDirection(FlexDirection.Row)
-				.SetHeight(24f)
+				.SetHeight(26f)
+				.SetPaddingX(2f)
 				.SetBackgroundColor(StateTreePalette.panelBackground)
 				.SetBorderColorBottom(StateTreePalette.panelBorder)
 				.SetBorderWidthBottom(1f)
 				.AddChildren(
-					new Button()
-						.SetText("Refresh")
-						.AddClicked(RebuildGraph),
+					MakeToolbarButton("Refresh", "Rebuild the graph from code", RebuildGraph),
+					MakeToolbarButton("Fit", "Frame the whole graph (F)", () => m_canvas.FrameContent(m_canvasSize)),
+					MakeSeparator(),
 					m_directionButton,
 					m_edgeStyleButton,
-					transitionsToggle,
-					new Button()
-						.SetText("Reset Layout")
-						.AddClicked(ClearCustomLayout),
-					new Button()
-						.SetText("History")
-						.AddClicked(ToggleHistory),
+					MakeSeparator(),
+					transitionsChip,
+					historyChip,
+					MakeSeparator(),
+					MakeToolbarButton("Reset Layout", "Discard dragged node positions for this view", ClearCustomLayout),
 					m_exportButton,
 					new VisualElement().SetFlexGrow(1f),
-					m_statusLabel);
+					m_statusLabel,
+					MakeSeparator(),
+					m_searchCountLabel,
+					m_searchField,
+					MakeSeparator(),
+					MakeToolbarButton("−", "Zoom out", () => m_canvas.ZoomBy(1f / ZoomStep)),
+					m_zoomLabel,
+					MakeToolbarButton("+", "Zoom in", () => m_canvas.ZoomBy(ZoomStep)));
 		}
+
+		/// <summary>Flat toolbar button: transparent at rest, subtly lit on hover.</summary>
+		private static Button MakeToolbarButton(string text, string tooltip, Action onClick)
+		{
+			var button = new Button()
+				.SetText(text)
+				.SetTooltip(tooltip)
+				.AddClicked(onClick)
+				.SetFontSize(11)
+				.SetColor(StateTreePalette.textPrimary)
+				.SetBackgroundColor(Color.clear)
+				.SetBorderWidth(0f)
+				.SetBorderRadius(4f)
+				.SetMarginX(1f)
+				.SetMarginY(3f)
+				.SetPaddingX(8f)
+				.SetPaddingY(0f);
+
+			button.RegisterCallback<PointerEnterEvent>(_ =>
+				button.SetBackgroundColor(StateTreePalette.toolbarButtonHover));
+			button.RegisterCallback<PointerLeaveEvent>(_ =>
+				button.SetBackgroundColor(Color.clear));
+
+			return button;
+		}
+
+		/// <summary>
+		/// Toolbar toggle styled as a chip: an accent background and border while on,
+		/// so the state is readable at a glance (unlike a plain button).
+		/// </summary>
+		private static Button MakeToggleChip(string text, string tooltip, bool initialValue, Action<bool> onChanged)
+		{
+			bool isOn = initialValue;
+
+			var chip = new Button()
+				.SetText(text)
+				.SetTooltip(tooltip)
+				.SetFontSize(11)
+				.SetBorderWidth(1f)
+				.SetBorderRadius(4f)
+				.SetMarginX(1f)
+				.SetMarginY(3f)
+				.SetPaddingX(8f)
+				.SetPaddingY(0f);
+
+			void Apply() =>
+				chip.SetBackgroundColor(isOn ? StateTreePalette.toggleOnBackground : Color.clear)
+					.SetBorderColor(isOn ? StateTreePalette.toggleOnBorder : Color.clear)
+					.SetColor(isOn ? StateTreePalette.textPrimary : StateTreePalette.textSecondary);
+
+			chip.AddClicked(() =>
+			{
+				isOn = !isOn;
+				Apply();
+				onChanged(isOn);
+			});
+			chip.RegisterCallback<PointerEnterEvent>(_ =>
+			{
+				if (!isOn) chip.SetBackgroundColor(StateTreePalette.toolbarButtonHover);
+			});
+			chip.RegisterCallback<PointerLeaveEvent>(_ => Apply());
+
+			Apply();
+			return chip;
+		}
+
+		private static VisualElement MakeSeparator() =>
+			new VisualElement()
+				.SetWidth(1f)
+				.SetMarginX(4f)
+				.SetMarginY(6f)
+				.SetBackgroundColor(StateTreePalette.panelBorder);
 
 		private void RebuildGraph()
 		{
 			m_roots = StateTreeGraphBuilder.Build();
 			m_transitions = StateTreeGraphBuilder.BuildTransitions();
 			ApplyCollapsedState(m_roots);
-			Vector2 canvasSize = StateTreeLayout.Arrange(m_roots, m_direction);
+			m_canvasSize = StateTreeLayout.Arrange(m_roots, m_direction);
 			ApplyCustomLayout(m_roots);
+			CountTransitionsPerState();
 
 			m_canvas.Clear();
 			m_nodeElements.Clear();
@@ -189,17 +327,38 @@ namespace Aspid.Core.HSM.Editor
 				.SetPosition(Position.Absolute)
 				.SetLeft(0f)
 				.SetTop(0f)
-				.SetWidth(canvasSize.x)
-				.SetHeight(canvasSize.y));
+				.SetWidth(m_canvasSize.x)
+				.SetHeight(m_canvasSize.y));
 
 			foreach (StateTreeNode root in m_roots)
 			{
 				CreateNodeElements(root);
 			}
 
+			m_inspector.SetGraphInfo(m_roots, m_transitions);
+			m_minimap.SetContent(m_roots, m_canvasSize);
 			RestoreSelection();
-			m_canvas.FrameContent(canvasSize);
+			m_canvas.FrameContent(m_canvasSize);
 			PollActiveStates();
+		}
+
+		private void CountTransitionsPerState()
+		{
+			m_transitionCounts.Clear();
+
+			foreach (StateTreeTransition transition in m_transitions)
+			{
+				m_transitionCounts.TryGetValue(transition.sourceState, out int sourceCount);
+				m_transitionCounts[transition.sourceState] = sourceCount + 1;
+
+				if (transition.targetState == transition.sourceState)
+				{
+					continue;
+				}
+
+				m_transitionCounts.TryGetValue(transition.targetState, out int targetCount);
+				m_transitionCounts[transition.targetState] = targetCount + 1;
+			}
 		}
 
 		private void ApplyCollapsedState(List<StateTreeNode> roots)
@@ -243,9 +402,15 @@ namespace Aspid.Core.HSM.Editor
 
 		private void CreateNodeElements(StateTreeNode node)
 		{
-			var element = new StateTreeNodeElement(node);
+			m_transitionCounts.TryGetValue(node.stateType, out int transitionCount);
+
+			var element = new StateTreeNodeElement(node, transitionCount);
 			element.onSelected += selected => SelectNode(selected.stateType);
-			element.onMoved += _ => m_edges.MarkDirtyRepaint();
+			element.onMoved += _ =>
+			{
+				m_edges.RefreshAfterNodeMove();
+				m_minimap.MarkDirtyRepaint();
+			};
 			element.onDragCompleted += moved =>
 				StateTreeLayoutStorage.Save(m_direction, moved.stateType, moved.position.position);
 			element.onCollapseToggled += ToggleCollapse;
@@ -312,6 +477,8 @@ namespace Aspid.Core.HSM.Editor
 				pair.Value.SetSelected(pair.Key == stateType);
 			}
 
+			m_minimap.SetSelectedType(stateType);
+
 			if (stateType != null && m_nodeElements.TryGetValue(stateType, out StateTreeNodeElement element))
 			{
 				m_inspector.Show(element.node);
@@ -321,6 +488,8 @@ namespace Aspid.Core.HSM.Editor
 			{
 				m_inspector.ShowPlaceholder();
 			}
+
+			UpdateHighlights();
 		}
 
 		private void RestoreSelection()
@@ -333,9 +502,202 @@ namespace Aspid.Core.HSM.Editor
 			SelectNode(m_selectedType);
 		}
 
-		private void CycleDirection()
+		/// <summary>
+		/// Applies focus mode and search highlighting in one pass: while searching,
+		/// matches get a bright ring and everything else fades; otherwise a selection
+		/// fades all nodes unrelated to it (parent, children, transition peers) and
+		/// tells the edge layer which node to focus.
+		/// </summary>
+		private void UpdateHighlights()
 		{
-			m_direction = (StateTreeLayoutDirection)(((int)m_direction + 1) % 3);
+			bool searchActive = !string.IsNullOrEmpty(m_searchQuery);
+			HashSet<Type> related = !searchActive && m_selectedType != null ? BuildRelatedSet(m_selectedType) : null;
+
+			foreach (KeyValuePair<Type, StateTreeNodeElement> pair in m_nodeElements)
+			{
+				bool isMatch = searchActive && IsSearchMatch(pair.Key);
+				pair.Value.SetSearchMatch(isMatch);
+				pair.Value.SetDimmed(searchActive ? !isMatch : related != null && !related.Contains(pair.Key));
+			}
+
+			m_edges?.SetFocusedType(searchActive ? null : m_selectedType);
+		}
+
+		private HashSet<Type> BuildRelatedSet(Type stateType)
+		{
+			var related = new HashSet<Type> { stateType };
+
+			if (m_nodeElements.TryGetValue(stateType, out StateTreeNodeElement element))
+			{
+				StateTreeNode node = element.node;
+				if (node.parent != null)
+				{
+					related.Add(node.parent.stateType);
+				}
+
+				foreach (StateTreeNode child in node.children)
+				{
+					related.Add(child.stateType);
+				}
+			}
+
+			foreach (StateTreeTransition transition in m_transitions)
+			{
+				if (transition.sourceState == stateType)
+				{
+					related.Add(transition.targetState);
+				}
+				else if (transition.targetState == stateType)
+				{
+					related.Add(transition.sourceState);
+				}
+			}
+
+			return related;
+		}
+
+		private bool IsSearchMatch(Type stateType) =>
+			stateType.Name.IndexOf(m_searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
+
+		private void OnSearchChanged(string query)
+		{
+			m_searchQuery = query?.Trim() ?? string.Empty;
+			m_searchMatchIndex = 0;
+			m_searchPlaceholder.SetDisplay(string.IsNullOrEmpty(query) ? DisplayStyle.Flex : DisplayStyle.None);
+			UpdateSearchCountLabel();
+			UpdateHighlights();
+		}
+
+		private void UpdateSearchCountLabel()
+		{
+			if (string.IsNullOrEmpty(m_searchQuery))
+			{
+				m_searchCountLabel.SetText(string.Empty);
+				return;
+			}
+
+			var count = 0;
+			foreach (Type stateType in m_nodeElements.Keys)
+			{
+				if (IsSearchMatch(stateType))
+				{
+					count++;
+				}
+			}
+
+			m_searchCountLabel
+				.SetText(count.ToString())
+				.SetColor(count > 0 ? StateTreePalette.textSecondary : StateTreePalette.textDim);
+		}
+
+		private void OnSearchKeyDown(KeyDownEvent keyEvent)
+		{
+			if (keyEvent.keyCode is KeyCode.Return or KeyCode.KeypadEnter)
+			{
+				JumpToNextSearchMatch();
+				keyEvent.StopPropagation();
+			}
+			else if (keyEvent.keyCode == KeyCode.Escape)
+			{
+				ClearSearch();
+				m_canvas.Focus();
+				keyEvent.StopPropagation();
+			}
+		}
+
+		private void JumpToNextSearchMatch()
+		{
+			var matches = new List<Type>();
+			foreach (Type stateType in m_nodeElements.Keys)
+			{
+				if (IsSearchMatch(stateType))
+				{
+					matches.Add(stateType);
+				}
+			}
+
+			if (matches.Count == 0)
+			{
+				return;
+			}
+
+			matches.Sort((left, right) => string.CompareOrdinal(left.Name, right.Name));
+			Type match = matches[m_searchMatchIndex % matches.Count];
+			m_searchMatchIndex++;
+
+			SelectNode(match);
+			m_canvas.CenterOn(m_nodeElements[match].node.position.center);
+		}
+
+		private void ClearSearch()
+		{
+			m_searchField.SetValueWithoutNotify(string.Empty);
+			m_searchPlaceholder.SetDisplay(DisplayStyle.Flex);
+			m_searchQuery = string.Empty;
+			m_searchMatchIndex = 0;
+			UpdateSearchCountLabel();
+			UpdateHighlights();
+		}
+
+		private void OnCanvasKeyDown(KeyDownEvent keyEvent)
+		{
+			if (keyEvent.keyCode == KeyCode.F && !keyEvent.ctrlKey && !keyEvent.commandKey)
+			{
+				FrameSelectionOrAll();
+				keyEvent.StopPropagation();
+			}
+			else if (keyEvent.keyCode == KeyCode.Escape)
+			{
+				ClearSearch();
+				SelectNode(null);
+				keyEvent.StopPropagation();
+			}
+		}
+
+		private void OnGlobalKeyDown(KeyDownEvent keyEvent)
+		{
+			if (keyEvent.keyCode == KeyCode.F && (keyEvent.ctrlKey || keyEvent.commandKey))
+			{
+				m_searchField.Focus();
+				keyEvent.StopPropagation();
+			}
+		}
+
+		private void FrameSelectionOrAll()
+		{
+			if (m_selectedType != null && m_nodeElements.TryGetValue(m_selectedType, out StateTreeNodeElement element))
+			{
+				m_canvas.CenterOn(element.node.position.center);
+			}
+			else
+			{
+				m_canvas.FrameContent(m_canvasSize);
+			}
+		}
+
+		private void UpdateZoomLabel() =>
+			m_zoomLabel.SetText($"{Mathf.RoundToInt(m_canvas.zoom * 100f)}%");
+
+		private void ShowDirectionMenu()
+		{
+			var menu = new GenericMenu();
+			AddDirectionItem(menu, "Top Down", StateTreeLayoutDirection.TopDown);
+			AddDirectionItem(menu, "Left to Right", StateTreeLayoutDirection.LeftToRight);
+			AddDirectionItem(menu, "Radial", StateTreeLayoutDirection.Radial);
+			menu.DropDown(m_directionButton.worldBound);
+		}
+
+		private void AddDirectionItem(GenericMenu menu, string caption, StateTreeLayoutDirection direction) =>
+			menu.AddItem(new GUIContent(caption), m_direction == direction, () => SetDirection(direction));
+
+		private void SetDirection(StateTreeLayoutDirection direction)
+		{
+			if (m_direction == direction)
+			{
+				return;
+			}
+
+			m_direction = direction;
 			EditorPrefs.SetInt(DirectionPrefsKey, (int)m_direction);
 			m_directionButton.SetText(GetDirectionCaption());
 			RebuildGraph();
@@ -344,14 +706,31 @@ namespace Aspid.Core.HSM.Editor
 		private string GetDirectionCaption() =>
 			m_direction switch
 			{
-				StateTreeLayoutDirection.TopDown => "View: Top Down",
-				StateTreeLayoutDirection.LeftToRight => "View: Left to Right",
-				_ => "View: Radial"
+				StateTreeLayoutDirection.TopDown => "View: Top Down ▾",
+				StateTreeLayoutDirection.LeftToRight => "View: Left to Right ▾",
+				_ => "View: Radial ▾"
 			};
 
-		private void CycleEdgeStyle()
+		private void ShowEdgeStyleMenu()
 		{
-			m_edgeStyle = (StateTreeEdgeStyle)(((int)m_edgeStyle + 1) % 3);
+			var menu = new GenericMenu();
+			AddEdgeStyleItem(menu, "Curved", StateTreeEdgeStyle.Bezier);
+			AddEdgeStyleItem(menu, "Straight", StateTreeEdgeStyle.Straight);
+			AddEdgeStyleItem(menu, "Orthogonal", StateTreeEdgeStyle.Orthogonal);
+			menu.DropDown(m_edgeStyleButton.worldBound);
+		}
+
+		private void AddEdgeStyleItem(GenericMenu menu, string caption, StateTreeEdgeStyle style) =>
+			menu.AddItem(new GUIContent(caption), m_edgeStyle == style, () => SetEdgeStyle(style));
+
+		private void SetEdgeStyle(StateTreeEdgeStyle style)
+		{
+			if (m_edgeStyle == style)
+			{
+				return;
+			}
+
+			m_edgeStyle = style;
 			EditorPrefs.SetInt(EdgeStylePrefsKey, (int)m_edgeStyle);
 			m_edgeStyleButton.SetText(GetEdgeStyleCaption());
 			m_edges?.SetStyle(m_edgeStyle);
@@ -360,22 +739,15 @@ namespace Aspid.Core.HSM.Editor
 		private string GetEdgeStyleCaption() =>
 			m_edgeStyle switch
 			{
-				StateTreeEdgeStyle.Straight => "Lines: Straight",
-				StateTreeEdgeStyle.Orthogonal => "Lines: Orthogonal",
-				_ => "Lines: Curved"
+				StateTreeEdgeStyle.Straight => "Lines: Straight ▾",
+				StateTreeEdgeStyle.Orthogonal => "Lines: Orthogonal ▾",
+				_ => "Lines: Curved ▾"
 			};
 
 		private void ClearCustomLayout()
 		{
 			StateTreeLayoutStorage.Clear(m_direction);
 			RebuildGraph();
-		}
-
-		private void ToggleHistory()
-		{
-			bool isVisible = m_history.resolvedStyle.display == DisplayStyle.Flex;
-			m_history.SetDisplay(isVisible ? DisplayStyle.None : DisplayStyle.Flex);
-			EditorPrefs.SetBool(HistoryPrefsKey, !isVisible);
 		}
 
 		private void ShowExportMenu()
@@ -518,6 +890,7 @@ namespace Aspid.Core.HSM.Editor
 			}
 
 			m_edges.SetActiveTypes(m_activeTypes);
+			m_minimap.SetActiveTypes(m_activeTypes);
 			m_statusLabel.SetText(BuildStatusText(currentStates));
 		}
 

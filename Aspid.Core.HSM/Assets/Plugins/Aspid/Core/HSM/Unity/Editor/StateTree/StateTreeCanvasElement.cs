@@ -23,6 +23,9 @@ namespace Aspid.Core.HSM.Editor
 
 		public event Action onBackgroundClicked;
 
+		/// <summary>Raised whenever pan or zoom changes — used by the zoom indicator and the minimap.</summary>
+		public event Action onViewChanged;
+
 		private readonly VisualElement m_content;
 
 		private Vector2 m_offset;
@@ -34,6 +37,8 @@ namespace Aspid.Core.HSM.Editor
 
 		public override VisualElement contentContainer => m_content;
 
+		public float zoom => m_zoom;
+
 		public StateTreeCanvasElement()
 		{
 			m_content = new VisualElement()
@@ -42,12 +47,16 @@ namespace Aspid.Core.HSM.Editor
 				.SetTop(0f);
 			m_content.style.transformOrigin = new TransformOrigin(0f, 0f);
 
+			focusable = true;
 			this.SetFlexGrow(1f)
 				.SetOverflow(Overflow.Hidden)
 				.SetBackgroundColor(StateTreePalette.canvasBackground);
 			hierarchy.Add(m_content);
 
 			generateVisualContent += OnGenerateVisualContent;
+			// Grab keyboard focus on any click inside the canvas — including clicks on nodes,
+			// which stop propagation in the bubble phase — so F/Esc hotkeys always work.
+			RegisterCallback<PointerDownEvent>(_ => Focus(), TrickleDown.TrickleDown);
 			RegisterCallback<PointerDownEvent>(OnPointerDown);
 			RegisterCallback<PointerMoveEvent>(OnPointerMove);
 			RegisterCallback<PointerUpEvent>(OnPointerUp);
@@ -78,6 +87,36 @@ namespace Aspid.Core.HSM.Editor
 				Mathf.Max((contentRect.height - contentSize.y * m_zoom) * 0.5f, GridStep * 0.5f));
 			ApplyTransform();
 		}
+
+		/// <summary>Viewport rectangle in content (world) coordinates — used by the minimap.</summary>
+		public Rect GetWorldViewport() =>
+			new(-m_offset / m_zoom, contentRect.size / m_zoom);
+
+		/// <summary>Pans the view so the given content (world) point ends up at the viewport center.</summary>
+		public void CenterOn(Vector2 worldPoint)
+		{
+			m_offset = contentRect.size * 0.5f - worldPoint * m_zoom;
+			ApplyTransform();
+		}
+
+		/// <summary>Sets the zoom level keeping the viewport center fixed.</summary>
+		public void SetZoom(float newZoom)
+		{
+			newZoom = Mathf.Clamp(newZoom, MinZoom, MaxZoom);
+			if (Mathf.Approximately(newZoom, m_zoom))
+			{
+				return;
+			}
+
+			Vector2 center = contentRect.size * 0.5f;
+			Vector2 worldPoint = (center - m_offset) / m_zoom;
+			m_zoom = newZoom;
+			m_offset = center - worldPoint * m_zoom;
+			ApplyTransform();
+		}
+
+		public void ZoomBy(float factor) =>
+			SetZoom(m_zoom * factor);
 
 		private void OnGeometryChanged(GeometryChangedEvent geometryEvent)
 		{
@@ -155,6 +194,7 @@ namespace Aspid.Core.HSM.Editor
 			m_content.style.translate = new Translate(m_offset.x, m_offset.y);
 			m_content.style.scale = new Scale(new Vector3(m_zoom, m_zoom, 1f));
 			MarkDirtyRepaint();
+			onViewChanged?.Invoke();
 		}
 
 		private void OnGenerateVisualContent(MeshGenerationContext context)

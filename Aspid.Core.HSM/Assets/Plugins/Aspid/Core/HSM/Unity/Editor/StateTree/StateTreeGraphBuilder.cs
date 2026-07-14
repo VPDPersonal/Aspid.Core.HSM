@@ -27,7 +27,10 @@ namespace Aspid.Core.HSM.Editor
 			var nodes = new Dictionary<Type, StateTreeNode>();
 			foreach (Type type in stateTypes)
 			{
-				nodes[type] = new StateTreeNode(type);
+				nodes[type] = new StateTreeNode(type)
+				{
+					controllerCount = StateTreeControllerScanner.Scan(type).Count
+				};
 			}
 
 			var roots = new List<StateTreeNode>();

@@ -13,11 +13,11 @@ namespace Aspid.Core.HSM.Editor
 	public static class StateTreeLayout
 	{
 		public const float NodeWidth = 180f;
-		public const float NodeHeight = 44f;
+		public const float NodeHeight = 52f;
 		public const float Padding = 32f;
 		public const float TopDownCrossGap = 24f;
 		public const float TopDownMainGap = 64f;
-		public const float LeftToRightCrossGap = 16f;
+		public const float LeftToRightCrossGap = 20f;
 		public const float LeftToRightMainGap = 96f;
 		public const float RadialRingStep = 220f;
 

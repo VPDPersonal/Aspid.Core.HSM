@@ -20,6 +20,12 @@ namespace Aspid.Core.HSM.Editor
 		public Rect position { get; set; }
 
 		/// <summary>
+		/// Number of controllers the state dispatches to
+		/// (see <see cref="StateTreeControllerScanner"/>), shown as a chip on the node card.
+		/// </summary>
+		public int controllerCount { get; set; }
+
+		/// <summary>
 		/// When <c>true</c>, the node's subtree is hidden: the layout treats the node
 		/// as a leaf, and its descendants get no elements or edges on the canvas.
 		/// </summary>

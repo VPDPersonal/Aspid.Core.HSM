@@ -16,9 +16,20 @@ namespace Aspid.Core.HSM.Editor
 		private const int MaxEntries = 200;
 
 		private readonly ScrollView m_scroll;
+		private readonly Label m_placeholder;
 
 		public StateTreeHistoryElement()
 		{
+			m_placeholder = new Label("No events yet — transitions will appear here in Play Mode")
+				.SetPosition(Position.Absolute)
+				.SetLeft(0f)
+				.SetRight(0f)
+				.SetTop(30f)
+				.SetFontSize(10)
+				.SetColor(StateTreePalette.textDim)
+				.SetUnityTextAlign(TextAnchor.MiddleCenter);
+			m_placeholder.pickingMode = PickingMode.Ignore;
+
 			var title = new Label("TRANSITION HISTORY")
 				.SetFontSize(9)
 				.SetLetterSpacing(1f)
@@ -46,7 +57,7 @@ namespace Aspid.Core.HSM.Editor
 				.SetBackgroundColor(StateTreePalette.panelBackground)
 				.SetBorderColorTop(StateTreePalette.panelBorder)
 				.SetBorderWidthTop(1f)
-				.AddChildren(header, m_scroll);
+				.AddChildren(header, m_scroll, m_placeholder);
 		}
 
 		public void AddTransition(string fromState, string toState)
@@ -73,6 +84,7 @@ namespace Aspid.Core.HSM.Editor
 
 		private void AddRow(VisualElement row)
 		{
+			m_placeholder.SetDisplay(DisplayStyle.None);
 			m_scroll.AddChild(row.SetMarginBottom(1f));
 
 			while (m_scroll.childCount > MaxEntries)
@@ -83,8 +95,11 @@ namespace Aspid.Core.HSM.Editor
 			m_scroll.schedule.Execute(() => m_scroll.scrollOffset = new Vector2(0f, float.MaxValue));
 		}
 
-		private void ClearEntries() =>
+		private void ClearEntries()
+		{
 			m_scroll.Clear();
+			m_placeholder.SetDisplay(DisplayStyle.Flex);
+		}
 
 		private Label BuildTimeLabel() =>
 			BuildText(DateTime.Now.ToString("HH:mm:ss"), StateTreePalette.textDim)
