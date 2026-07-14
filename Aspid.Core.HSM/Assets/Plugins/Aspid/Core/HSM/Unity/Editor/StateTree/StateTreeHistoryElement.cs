@@ -7,9 +7,9 @@ using UnityEngine.UIElements;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Панель истории переходов HSM: лента записей «время: from → to» и служебных
-	/// сообщений (старт/стоп Play Mode, поиск машины) с автопрокруткой вниз
-	/// и ограничением количества записей.
+	/// HSM transition history panel: a feed of "time: from → to" entries and status
+	/// messages (Play Mode start/stop, machine lookup) with auto-scroll to the bottom
+	/// and a cap on the number of entries.
 	/// </summary>
 	public sealed class StateTreeHistoryElement : VisualElement
 	{
@@ -19,14 +19,14 @@ namespace Aspid.Core.HSM.Editor
 
 		public StateTreeHistoryElement()
 		{
-			var title = new Label("ИСТОРИЯ ПЕРЕХОДОВ")
+			var title = new Label("TRANSITION HISTORY")
 				.SetFontSize(9)
 				.SetLetterSpacing(1f)
 				.SetColor(StateTreePalette.textDim)
 				.SetAlignSelf(Align.Center);
 
 			var clearButton = new Button()
-				.SetText("Очистить")
+				.SetText("Clear")
 				.SetFontSize(10)
 				.SetMarginLeft(new StyleLength(StyleKeyword.Auto))
 				.AddClicked(ClearEntries);

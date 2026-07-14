@@ -7,10 +7,10 @@ using UnityEditor;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Строит модель дерева состояний HSM по <see cref="TypeCache"/>:
-	/// узлы — неабстрактные реализации <see cref="IState"/> из всех сборок проекта
-	/// (кроме служебного <see cref="EmptyState"/> и расширений <see cref="IExtensionState"/>),
-	/// рёбра родитель-ребёнок — из <see cref="IChildState{T}"/>.
+	/// Builds the HSM state tree model from <see cref="TypeCache"/>:
+	/// nodes are non-abstract <see cref="IState"/> implementations across all project
+	/// assemblies (excluding the internal <see cref="EmptyState"/> and <see cref="IExtensionState"/>
+	/// extensions), parent-child edges come from <see cref="IChildState{T}"/>.
 	/// </summary>
 	public static class StateTreeGraphBuilder
 	{

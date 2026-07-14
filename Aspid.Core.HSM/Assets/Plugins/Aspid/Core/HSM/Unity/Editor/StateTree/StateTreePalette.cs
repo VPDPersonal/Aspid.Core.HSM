@@ -4,9 +4,9 @@ using UnityEngine;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Общая палитра окна HSM State Tree в духе тёмной темы Aspid.FastTools:
-	/// цвета канваса, панелей, нод, подсветки активной цепочки и выделения,
-	/// а также акцентные цвета уровней глубины дерева.
+	/// Shared palette for the HSM State Tree window in the spirit of Aspid.FastTools' dark theme:
+	/// canvas, panel, and node colors, active-chain and selection highlighting,
+	/// and accent colors for tree depth levels.
 	/// </summary>
 	public static class StateTreePalette
 	{
@@ -48,9 +48,9 @@ namespace Aspid.Core.HSM.Editor
 		};
 
 		/// <summary>
-		/// Возвращает акцентный цвет для уровня глубины дерева (циклически по палитре).
+		/// Returns the accent color for a tree depth level (cycles through the palette).
 		/// </summary>
-		/// <param name="depth">Глубина узла, 0 — корень.</param>
+		/// <param name="depth">Node depth, 0 is the root.</param>
 		public static Color GetDepthColor(int depth) =>
 			s_depthColors[Mathf.Abs(depth) % s_depthColors.Length];
 	}

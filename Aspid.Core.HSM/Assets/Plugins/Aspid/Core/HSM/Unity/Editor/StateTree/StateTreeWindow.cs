@@ -11,10 +11,10 @@ using UnityEngine.UIElements;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Editor-окно визуализации дерева состояний HSM: нодовый граф на VisualElement
-	/// с тремя режимами раскладки и перетаскиванием нод, инспектор выбранной ноды,
-	/// история переходов и управление работающей <see cref="MonoStateMachine"/>
-	/// (подсветка активной цепочки, ChangeState / TransitionTo) в Play Mode.
+	/// Editor window for visualizing the HSM state tree: a node graph on VisualElement
+	/// with three layout modes and node dragging, an inspector for the selected node,
+	/// a transition history, and control of a running <see cref="MonoStateMachine"/>
+	/// (active chain highlighting, ChangeState / TransitionTo) in Play Mode.
 	/// </summary>
 	public sealed class StateTreeWindow : EditorWindow
 	{
@@ -130,10 +130,10 @@ namespace Aspid.Core.HSM.Editor
 					m_directionButton,
 					m_edgeStyleButton,
 					new Button()
-						.SetText("Сброс разметки")
+						.SetText("Reset Layout")
 						.AddClicked(ClearCustomLayout),
 					new Button()
-						.SetText("История")
+						.SetText("History")
 						.AddClicked(ToggleHistory),
 					new VisualElement().SetFlexGrow(1f),
 					m_statusLabel);
@@ -224,7 +224,7 @@ namespace Aspid.Core.HSM.Editor
 				_ => ExecuteMachineCommand("TransitionTo", node.stateType),
 				_ => controlStatus);
 			populate.menu.AppendSeparator();
-			populate.menu.AppendAction("Открыть скрипт", _ => node.stateType.OpenInScriptEditor());
+			populate.menu.AppendAction("Open Script", _ => node.stateType.OpenInScriptEditor());
 		}
 
 		private void SelectNode(Type stateType)
@@ -268,9 +268,9 @@ namespace Aspid.Core.HSM.Editor
 		private string GetDirectionCaption() =>
 			m_direction switch
 			{
-				StateTreeLayoutDirection.TopDown => "Вид: сверху вниз",
-				StateTreeLayoutDirection.LeftToRight => "Вид: слева направо",
-				_ => "Вид: радиальный"
+				StateTreeLayoutDirection.TopDown => "View: Top Down",
+				StateTreeLayoutDirection.LeftToRight => "View: Left to Right",
+				_ => "View: Radial"
 			};
 
 		private void CycleEdgeStyle()
@@ -284,9 +284,9 @@ namespace Aspid.Core.HSM.Editor
 		private string GetEdgeStyleCaption() =>
 			m_edgeStyle switch
 			{
-				StateTreeEdgeStyle.Straight => "Линии: прямые",
-				StateTreeEdgeStyle.Orthogonal => "Линии: ортогональные",
-				_ => "Линии: кривые"
+				StateTreeEdgeStyle.Straight => "Lines: Straight",
+				StateTreeEdgeStyle.Orthogonal => "Lines: Orthogonal",
+				_ => "Lines: Curved"
 			};
 
 		private void ClearCustomLayout()
@@ -315,11 +315,11 @@ namespace Aspid.Core.HSM.Editor
 					.GetMethod(methodName, Type.EmptyTypes)
 					.MakeGenericMethod(stateType);
 				method.Invoke(m_stateMachine, null);
-				m_history.AddMessage($"Команда {methodName}<{stateType.Name}>");
+				m_history.AddMessage($"Command {methodName}<{stateType.Name}>");
 			}
 			catch (Exception exception)
 			{
-				m_history.AddMessage($"Ошибка {methodName}<{stateType.Name}>: {exception.InnerException?.Message ?? exception.Message}");
+				m_history.AddMessage($"Error {methodName}<{stateType.Name}>: {exception.InnerException?.Message ?? exception.Message}");
 				Debug.LogException(exception);
 			}
 
@@ -330,11 +330,11 @@ namespace Aspid.Core.HSM.Editor
 		{
 			if (change == PlayModeStateChange.EnteredPlayMode)
 			{
-				m_history.AddMessage("Play Mode запущен");
+				m_history.AddMessage("Play Mode started");
 			}
 			else if (change == PlayModeStateChange.EnteredEditMode)
 			{
-				m_history.AddMessage("Play Mode остановлен");
+				m_history.AddMessage("Play Mode stopped");
 				m_stateMachine = null;
 				m_lastLeafName = null;
 				PollActiveStates();
@@ -401,7 +401,7 @@ namespace Aspid.Core.HSM.Editor
 				m_stateMachine = FindFirstObjectByType<MonoStateMachine>(FindObjectsInactive.Include);
 				if (m_stateMachine != null)
 				{
-					m_history.AddMessage($"MonoStateMachine найдена: {m_stateMachine.name}");
+					m_history.AddMessage($"MonoStateMachine found: {m_stateMachine.name}");
 				}
 			}
 
@@ -441,17 +441,17 @@ namespace Aspid.Core.HSM.Editor
 		{
 			if (!EditorApplication.isPlaying)
 			{
-				return "Edit Mode — машина не запущена";
+				return "Edit Mode — machine not running";
 			}
 
 			if (m_stateMachine == null)
 			{
-				return "Play Mode — MonoStateMachine не найдена";
+				return "Play Mode — MonoStateMachine not found";
 			}
 
 			if (currentStates.Count == 0)
 			{
-				return "Play Mode — машина не инициализирована";
+				return "Play Mode — machine not initialized";
 			}
 
 			var names = new List<string>(currentStates.Count);

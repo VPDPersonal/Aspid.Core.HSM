@@ -7,10 +7,10 @@ using UnityEngine.UIElements;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Канвас графа в духе Shader Graph: тёмный фон с сеткой, панорамирование
-	/// перетаскиванием мыши и зум колесом вокруг курсора. Дочерние элементы
-	/// добавляются в трансформируемый слой контента. Клик по пустому фону
-	/// (без перетаскивания) поднимает <see cref="onBackgroundClicked"/>.
+	/// Graph canvas in the spirit of Shader Graph: a dark background with a grid, mouse-drag
+	/// panning, and wheel zoom around the cursor. Child elements are added to a transformable
+	/// content layer. Clicking empty background (without dragging) raises
+	/// <see cref="onBackgroundClicked"/>.
 	/// </summary>
 	public sealed class StateTreeCanvasElement : VisualElement
 	{
@@ -56,9 +56,9 @@ namespace Aspid.Core.HSM.Editor
 		}
 
 		/// <summary>
-		/// Вписывает и центрирует контент указанного размера во вьюпорте, подбирая зум
-		/// так, чтобы контент влезал целиком (после первого лейаута, если размер
-		/// вьюпорта ещё неизвестен).
+		/// Fits and centers content of the given size in the viewport, choosing a zoom
+		/// level so the content fits entirely (deferred until after the first layout
+		/// if the viewport size isn't known yet).
 		/// </summary>
 		public void FrameContent(Vector2 contentSize)
 		{
@@ -140,7 +140,7 @@ namespace Aspid.Core.HSM.Editor
 				return;
 			}
 
-			// Зум вокруг курсора: точка мира под мышью остаётся на месте.
+			// Zoom around the cursor: the world point under the mouse stays put.
 			Vector2 pointer = this.WorldToLocal(wheelEvent.mousePosition);
 			Vector2 worldPoint = (pointer - m_offset) / m_zoom;
 			m_zoom = newZoom;

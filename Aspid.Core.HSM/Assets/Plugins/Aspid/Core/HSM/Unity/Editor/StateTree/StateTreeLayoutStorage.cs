@@ -7,9 +7,9 @@ using UnityEngine;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Хранилище пользовательской разметки графа HSM: позиции перетащенных нод
-	/// сохраняются в JSON в <c>UserSettings/</c> (машинно-локально, вне VCS)
-	/// отдельно для каждого режима <see cref="StateTreeLayoutDirection"/>.
+	/// Storage for the HSM graph's user layout: positions of dragged nodes
+	/// are saved as JSON under <c>UserSettings/</c> (machine-local, outside VCS)
+	/// separately for each <see cref="StateTreeLayoutDirection"/> mode.
 	/// </summary>
 	public static class StateTreeLayoutStorage
 	{

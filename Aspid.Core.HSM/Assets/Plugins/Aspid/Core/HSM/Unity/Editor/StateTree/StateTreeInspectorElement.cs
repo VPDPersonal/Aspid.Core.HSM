@@ -11,10 +11,10 @@ using UnityEngine.UIElements;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Инспектор выбранной ноды графа HSM: имя и namespace состояния, иерархические
-	/// связи с навигацией по клику, список контроллеров состояния (вложенные
-	/// <see cref="IController"/>-классы и интерфейсы самого стейта), runtime-статус
-	/// и команды <c>ChangeState</c> / <c>TransitionTo</c> в Play Mode.
+	/// Inspector for the selected HSM graph node: state name and namespace, hierarchy
+	/// links with click-to-navigate, the state's controller list (nested
+	/// <see cref="IController"/> classes and interfaces on the state itself), runtime status,
+	/// and <c>ChangeState</c> / <c>TransitionTo</c> commands in Play Mode.
 	/// </summary>
 	public sealed class StateTreeInspectorElement : VisualElement
 	{
@@ -44,7 +44,7 @@ namespace Aspid.Core.HSM.Editor
 			m_node = null;
 			Clear();
 
-			this.AddChild(new Label("Выберите ноду на графе")
+			this.AddChild(new Label("Select a node on the graph")
 				.SetFontSize(11)
 				.SetColor(StateTreePalette.textDim)
 				.SetMarginTop(16f)
@@ -67,11 +67,11 @@ namespace Aspid.Core.HSM.Editor
 					.SetWhiteSpace(WhiteSpace.Normal)
 					.SetMarginBottom(8f),
 				new Button()
-					.SetText("Открыть скрипт")
+					.SetText("Open Script")
 					.AddClicked(() => node.stateType.OpenInScriptEditor()),
-				BuildSectionTitle("Иерархия"),
+				BuildSectionTitle("Hierarchy"),
 				BuildHierarchySection(node),
-				BuildSectionTitle("Контроллеры"),
+				BuildSectionTitle("Controllers"),
 				BuildControllersSection(node.stateType),
 				BuildSectionTitle("Runtime"),
 				BuildRuntimeSection());
@@ -94,15 +94,15 @@ namespace Aspid.Core.HSM.Editor
 			}
 			else if (!isMachineReady)
 			{
-				m_runtimeStatus.SetText("Машина не найдена").SetColor(StateTreePalette.textDim);
+				m_runtimeStatus.SetText("Machine not found").SetColor(StateTreePalette.textDim);
 			}
 			else if (isActive)
 			{
-				m_runtimeStatus.SetText("● Активно").SetColor(StateTreePalette.activeBorder);
+				m_runtimeStatus.SetText("● Active").SetColor(StateTreePalette.activeBorder);
 			}
 			else
 			{
-				m_runtimeStatus.SetText("○ Неактивно").SetColor(StateTreePalette.textSecondary);
+				m_runtimeStatus.SetText("○ Inactive").SetColor(StateTreePalette.textSecondary);
 			}
 		}
 
@@ -130,20 +130,20 @@ namespace Aspid.Core.HSM.Editor
 		{
 			var section = new VisualElement();
 
-			section.AddChild(BuildInfoRow("Глубина", node.depth.ToString()));
+			section.AddChild(BuildInfoRow("Depth", node.depth.ToString()));
 			section.AddChild(node.parent != null
-				? BuildLinkRow("Родитель", node.parent.stateType)
-				: BuildInfoRow("Родитель", "— (корень)"));
+				? BuildLinkRow("Parent", node.parent.stateType)
+				: BuildInfoRow("Parent", "— (root)"));
 
 			if (node.children.Count == 0)
 			{
-				section.AddChild(BuildInfoRow("Дети", "— (лист)"));
+				section.AddChild(BuildInfoRow("Children", "— (leaf)"));
 			}
 			else
 			{
 				foreach (StateTreeNode child in node.children)
 				{
-					section.AddChild(BuildLinkRow(child == node.children[0] ? "Дети" : string.Empty, child.stateType));
+					section.AddChild(BuildLinkRow(child == node.children[0] ? "Children" : string.Empty, child.stateType));
 				}
 			}
 
@@ -186,12 +186,12 @@ namespace Aspid.Core.HSM.Editor
 			if (!isControllerGroup && typeof(IController).IsAssignableFrom(stateType))
 			{
 				isEmpty = false;
-				section.AddChild(BuildControllerRow("(сам стейт)", stateType));
+				section.AddChild(BuildControllerRow("(the state itself)", stateType));
 			}
 
 			if (isEmpty)
 			{
-				section.AddChild(new Label("Нет контроллеров")
+				section.AddChild(new Label("No controllers")
 					.SetFontSize(11)
 					.SetColor(StateTreePalette.textDim));
 			}

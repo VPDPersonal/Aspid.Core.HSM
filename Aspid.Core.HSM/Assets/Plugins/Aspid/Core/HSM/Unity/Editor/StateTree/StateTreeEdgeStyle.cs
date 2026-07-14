@@ -2,8 +2,8 @@
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Стиль отрисовки рёбер графа HSM: кривая Безье, прямая линия
-	/// или ортогональный маршрут с изломами под прямым углом.
+	/// HSM graph edge drawing style: a Bezier curve, a straight line,
+	/// or an orthogonal route with right-angle bends.
 	/// </summary>
 	public enum StateTreeEdgeStyle
 	{

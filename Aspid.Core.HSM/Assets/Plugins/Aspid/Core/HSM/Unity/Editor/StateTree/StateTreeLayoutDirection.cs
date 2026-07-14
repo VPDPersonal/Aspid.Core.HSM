@@ -2,9 +2,9 @@
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Режим раскладки дерева состояний HSM на канвасе: корень сверху с ростом вниз,
-	/// корень слева с ростом вправо или радиальный вид с корнем в центре
-	/// и ярусами-кольцами.
+	/// Layout mode for the HSM state tree on the canvas: root at the top growing down,
+	/// root on the left growing right, or a radial view with the root in the center
+	/// and tiers as rings.
 	/// </summary>
 	public enum StateTreeLayoutDirection
 	{

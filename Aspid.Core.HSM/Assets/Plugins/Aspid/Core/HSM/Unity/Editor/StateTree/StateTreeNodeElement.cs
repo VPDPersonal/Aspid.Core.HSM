@@ -9,9 +9,9 @@ using UnityEngine.UIElements;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Визуальная нода графа HSM: карточка с именем типа состояния и акцентной
-	/// полосой цвета глубины. Поддерживает hover, выделение кликом, подсветку
-	/// активной цепочки, перетаскивание мышью и открытие скрипта двойным кликом.
+	/// Visual node of the HSM graph: a card with the state type name and an accent
+	/// bar colored by depth. Supports hover, click selection, active-chain highlighting,
+	/// mouse dragging, and opening the script on double-click.
 	/// </summary>
 	public sealed class StateTreeNodeElement : VisualElement
 	{
@@ -210,7 +210,7 @@ namespace Aspid.Core.HSM.Editor
 				: StateTreePalette.GetDepthColor(node.depth));
 		}
 
-		// Корень выделяется сплошной заливкой акцентным цветом, чтобы центр дерева читался сразу.
+		// The root is highlighted with a solid accent fill so the tree's center reads at a glance.
 		private void UpdateRootVisualState()
 		{
 			Color fill = m_isActive ? StateTreePalette.activeBorder : StateTreePalette.GetDepthColor(0);

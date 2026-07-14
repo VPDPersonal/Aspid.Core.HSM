@@ -5,10 +5,10 @@ using UnityEngine;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Лейаут дерева состояний с поддержкой режимов <see cref="StateTreeLayoutDirection"/>:
-	/// ярусные раскладки сверху вниз и слева направо (родитель центрируется над спаном
-	/// своего поддерева) и радиальная с корнем в центре и ярусами-кольцами.
-	/// Пишет позиции в <see cref="StateTreeNode.position"/> и возвращает размер канваса.
+	/// State tree layout supporting the <see cref="StateTreeLayoutDirection"/> modes:
+	/// tiered top-down and left-to-right layouts (the parent is centered over its
+	/// subtree's span) and a radial layout with the root in the center and tiers as rings.
+	/// Writes positions into <see cref="StateTreeNode.position"/> and returns the canvas size.
 	/// </summary>
 	public static class StateTreeLayout
 	{

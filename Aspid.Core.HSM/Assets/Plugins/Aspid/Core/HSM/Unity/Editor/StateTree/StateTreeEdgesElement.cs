@@ -7,10 +7,10 @@ using UnityEngine.UIElements;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Слой рёбер графа HSM: рисует связи родитель-ребёнок через Painter2D
-	/// в выбранном стиле (Безье, прямая или ортогональная), выбирая грани нод
-	/// адаптивно и подсвечивая рёбра, оба конца которых входят в активную цепочку.
-	/// По активным рёбрам от родителя к ребёнку бежит светящийся бегунок.
+	/// HSM graph edge layer: draws parent-child links via Painter2D
+	/// in the selected style (Bezier, straight, or orthogonal), picking node
+	/// anchors adaptively and highlighting edges whose both ends are in the active chain.
+	/// A glowing runner travels along active edges from parent to child.
 	/// </summary>
 	public sealed class StateTreeEdgesElement : VisualElement
 	{
@@ -117,9 +117,9 @@ namespace Aspid.Core.HSM.Editor
 		}
 
 		/// <summary>
-		/// Рисует бегунок — светящуюся точку, циклически бегущую вдоль полилинии
-		/// от родителя к ребёнку. Скорость постоянна в пикселях, поэтому на длинных
-		/// рёбрах цикл дольше, но темп движения одинаков по всему дереву.
+		/// Draws the runner — a glowing dot cyclically traveling along the polyline
+		/// from parent to child. Speed is constant in pixels, so longer edges
+		/// take a longer cycle but the pace of motion is the same across the whole tree.
 		/// </summary>
 		private static void DrawRunner(Painter2D painter, List<Vector2> path)
 		{
@@ -165,8 +165,8 @@ namespace Aspid.Core.HSM.Editor
 		}
 
 		/// <summary>
-		/// Сэмплирует кубическую кривую Безье (та же геометрия, что раньше рисовал
-		/// BezierCurveTo) в полилинию, чтобы по ней можно было вести бегунок.
+		/// Samples a cubic Bezier curve (the same geometry that BezierCurveTo used
+		/// to draw) into a polyline so the runner can travel along it.
 		/// </summary>
 		private static void AppendBezierPath(
 			List<Vector2> path,
@@ -208,7 +208,7 @@ namespace Aspid.Core.HSM.Editor
 
 			if (startHorizontal == endHorizontal)
 			{
-				// Одинаковые оси выхода: два излома через середину между точками.
+				// Same exit axis: two bends through the midpoint between the points.
 				if (startHorizontal)
 				{
 					float middleX = (exit.x + entry.x) * 0.5f;
@@ -224,7 +224,7 @@ namespace Aspid.Core.HSM.Editor
 			}
 			else
 			{
-				// Разные оси: единственный угол на пересечении направлений.
+				// Different axes: a single corner at the intersection of the directions.
 				path.Add(startHorizontal
 					? new Vector2(entry.x, exit.y)
 					: new Vector2(exit.x, entry.y));
@@ -235,12 +235,12 @@ namespace Aspid.Core.HSM.Editor
 		}
 
 		/// <summary>
-		/// Возвращает точку на грани ноды, обращённой к другой ноде, и внешнюю
-		/// нормаль этой грани. Ось выбирается по зазорам между прямоугольниками
-		/// с приоритетом главной оси раскладки: в TopDown ребро идёт низ→верх,
-		/// пока между нодами есть вертикальный зазор (даже при сильном боковом
-		/// смещении), и лишь при нодах на одном уровне уходит на боковые грани;
-		/// в LeftToRight — зеркально; в Radial решает больший зазор.
+		/// Returns the point on a node's edge facing the other node, and the outward
+		/// normal of that edge. The axis is chosen by the gaps between the rectangles
+		/// with priority given to the layout's main axis: in TopDown the edge runs
+		/// bottom→top as long as there's a vertical gap between the nodes (even with a
+		/// strong lateral offset), and only falls back to the side edges when nodes
+		/// are at the same level; in LeftToRight it's mirrored; in Radial the larger gap wins.
 		/// </summary>
 		private Vector2 GetAnchor(Rect rect, Rect other, out Vector2 normal)
 		{

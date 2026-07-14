@@ -6,9 +6,9 @@ using UnityEngine;
 namespace Aspid.Core.HSM.Editor
 {
 	/// <summary>
-	/// Узел модели дерева состояний HSM для editor-визуализации:
-	/// тип состояния, связи родитель-дети, глубина в дереве
-	/// и вычисленная лейаутом позиция на канвасе.
+	/// Node of the HSM state tree model for editor visualization:
+	/// state type, parent-child links, tree depth,
+	/// and the position on the canvas computed by the layout.
 	/// </summary>
 	public sealed class StateTreeNode
 	{
