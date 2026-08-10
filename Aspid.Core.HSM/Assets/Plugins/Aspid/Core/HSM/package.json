@@ -1,8 +1,10 @@
 {
   "name": "com.aspid.core.hsm",
-  "version": "0.0.1-alpha.1",
+  "version": "0.0.1-alpha.2",
   "displayName": "Aspid.Core.HSM",
+  "description": "Roslyn-powered Hierarchical State Machine for Unity, built from small composable abstractions: states with Enter/Exit hooks, a parent-to-child hierarchy, pluggable per-frame controllers, declarative guarded transitions, extension states, state scopes and async enter/exit.",
   "unity": "2022.3",
+  "license": "MIT",
   "author":
   {
     "name": "Vladislav Panin",

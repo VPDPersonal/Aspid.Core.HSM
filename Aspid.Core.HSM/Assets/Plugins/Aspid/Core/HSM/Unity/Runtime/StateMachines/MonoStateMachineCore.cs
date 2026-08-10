@@ -1,3 +1,5 @@
+using System;
+
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
@@ -16,6 +18,17 @@ namespace Aspid.Core.HSM
         public void InvokeLateUpdate(float deltaTime) => LateUpdate(deltaTime);
 
         public void InvokeFixedUpdate(float deltaTime) => FixedUpdate(deltaTime);
+
+        protected override bool IsControllerEnabled(IController controller, IState state) =>
+            _owner.RaiseIsControllerEnabled(controller, state);
+
+        protected override bool IsStateEnabled(Type stateType) =>
+            _owner.RaiseIsStateEnabled(stateType);
+
+        protected override bool IsTransitionEnabled(Type sourceType, Type targetType) =>
+            _owner.RaiseIsTransitionEnabled(sourceType, targetType);
+
+        protected override bool StrictTransitions => _owner.RaiseStrictTransitions();
 
         protected override void OnChangingState() => _owner.RaiseChangingState();
 

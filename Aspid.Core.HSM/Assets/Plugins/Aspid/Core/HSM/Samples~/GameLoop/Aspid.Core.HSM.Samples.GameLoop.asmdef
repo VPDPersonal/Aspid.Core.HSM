@@ -1,0 +1,18 @@
+{
+    "name": "Aspid.Core.HSM.Samples.GameLoop",
+    "rootNamespace": "Aspid.Core.HSM.Samples.GameLoop",
+    "references": [
+        "Aspid.Core.HSM",
+        "Aspid.Core.HSM.Unity",
+        "UniTask"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 
@@ -11,6 +12,11 @@ namespace Aspid.Core.HSM
         // the superseder. default(UniTask) is an already-completed task, so no null check is needed.
         private UniTask _activeTransitionTask;
 
+        // True only while the async core is running its exit/enter callbacks. A transition started from
+        // inside one of those callbacks would await the very task it is running on, so it is rejected
+        // with a diagnosable exception instead of deadlocking.
+        private bool _isChangingStateAsync;
+
         /// <summary>
         /// Asynchronously transitions to <typeparamref name="TState"/>. Cancels any in-progress
         /// async transition and waits for it to unwind before mutating the state chain, so two
@@ -20,10 +26,26 @@ namespace Aspid.Core.HSM
         /// </summary>
         /// <typeparam name="TState">The target leaf state type.</typeparam>
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
-        public async UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
-            where TState : IState
+        public UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
+            where TState : IState =>
+            ChangeStateAsync(typeof(TState), cancellationToken);
+
+        /// <inheritdoc cref="ChangeStateAsync{TState}"/>
+        /// <param name="stateType">The target leaf state type.</param>
+        /// <param name="cancellationToken">Cancellation token for the transition.</param>
+        /// <exception cref="InvalidOperationException">
+        /// Called from inside an async enter/exit callback of the transition already running.
+        /// </exception>
+        public async UniTask ChangeStateAsync(Type stateType, CancellationToken cancellationToken = default)
         {
-            if (!IsStateEnabled(typeof(TState)))
+            if (_isChangingStateAsync)
+                throw new InvalidOperationException(
+                    "ChangeStateAsync was called from inside the async enter/exit callbacks of the transition " +
+                    "that is currently running. Awaiting it would deadlock, because the running transition " +
+                    "cannot unwind until this call returns. Start the follow-up transition after the current " +
+                    "one completes, or use the synchronous ChangeState, which queues re-entrant requests.");
+
+            if (!IsStateEnabled(stateType))
                 return;
 
             var previous = _activeTransitionCts;
@@ -36,9 +58,14 @@ namespace Aspid.Core.HSM
                 catch { /* superseded transition's result belongs to its original caller */ }
             }
 
+            // Re-read the leaf only after the superseded transition has unwound: the edge being guarded
+            // is the one actually taken, not the one that was current when this call was made.
+            if (!IsTransitionEnabled(_currentStates[^1].GetType(), stateType))
+                return;
+
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _activeTransitionCts = linked;
-            var task = ChangeStateCoreAsync<TState>(linked.Token).Preserve();
+            var task = ChangeStateCoreAsync(stateType, linked.Token).Preserve();
             _activeTransitionTask = task;
             try
             {
@@ -54,26 +81,37 @@ namespace Aspid.Core.HSM
             }
         }
 
-        private async UniTask ChangeStateCoreAsync<TState>(CancellationToken token)
-            where TState : IState
+        private async UniTask ChangeStateCoreAsync(Type stateType, CancellationToken token)
         {
             OnChangingState();
             {
-                var newChain = _stateFactory.CreateState<TState>(_currentStates);
-                var divergeIndex = FindDivergeIndex(newChain);
-
-                for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+                // Rented per in-flight transition: the chain is read across awaits, so a buffer shared
+                // with the factory or with another transition would be rewritten underneath this loop.
+                var newChain = RentChainBuffer();
+                _isChangingStateAsync = true;
+                try
                 {
-                    await ExitStateAsync(_currentStates[i], token);
-                    _currentStates.RemoveAt(i);
+                    _stateFactory.CreateState(stateType, _currentStates, newChain);
+                    var divergeIndex = FindDivergeIndex(newChain);
+
+                    for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+                    {
+                        await ExitStateAsync(_currentStates[i], token);
+                        _currentStates.RemoveAt(i);
+                    }
+
+                    for (var i = divergeIndex; i < newChain.Count; i++)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var state = newChain[i];
+                        _currentStates.Add(state);
+                        await EnterStateAsync(state, token);
+                    }
                 }
-
-                for (var i = divergeIndex; i < newChain.Count; i++)
+                finally
                 {
-                    token.ThrowIfCancellationRequested();
-                    var state = newChain[i];
-                    _currentStates.Add(state);
-                    await EnterStateAsync(state, token);
+                    _isChangingStateAsync = false;
+                    ReturnChainBuffer(newChain);
                 }
             }
             OnChangedState();
