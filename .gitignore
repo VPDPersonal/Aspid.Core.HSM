@@ -1,2 +1,10 @@
 .idea
 *.DotSettings.user
+
+# Unity hides directories whose name ends with '~' from the Editor, which is how a UPM package
+# ships its samples (Samples~) and docs (Documentation~). A user-global gitignore carrying the
+# usual editor-backup pattern '*~' also matches those directories, silently dropping them from
+# every commit — and therefore from the `git subtree split` the release workflow publishes.
+# Re-include them here: repository rules take precedence over core.excludesFile.
+!**/*~/
+!**/*~/**
