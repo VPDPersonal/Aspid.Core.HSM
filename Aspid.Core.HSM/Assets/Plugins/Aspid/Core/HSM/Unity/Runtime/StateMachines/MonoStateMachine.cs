@@ -127,6 +127,20 @@ namespace Aspid.Core.HSM
         protected virtual void OnFixedUpdated() { }
         #endregion
 
+        #region Extension Points
+        /// <inheritdoc cref="StateMachineBase.IsControllerEnabled"/>
+        protected virtual bool IsControllerEnabled(IController controller, IState state) => true;
+
+        /// <inheritdoc cref="StateMachineBase.IsStateEnabled"/>
+        protected virtual bool IsStateEnabled(Type stateType) => true;
+
+        /// <inheritdoc cref="StateMachineBase.IsTransitionEnabled"/>
+        protected virtual bool IsTransitionEnabled(Type sourceType, Type targetType) => true;
+
+        /// <inheritdoc cref="StateMachineBase.StrictTransitions"/>
+        protected virtual bool StrictTransitions => false;
+        #endregion
+
         #region ChangeState hooks
         /// <inheritdoc cref="StateMachineBase.OnChangingState"/>
         protected virtual void OnChangingState() { }
@@ -161,6 +175,10 @@ namespace Aspid.Core.HSM
         protected virtual void Disposed() { }
         #endregion
 
+        internal bool RaiseIsControllerEnabled(IController controller, IState state) => IsControllerEnabled(controller, state);
+        internal bool RaiseIsStateEnabled(Type stateType) => IsStateEnabled(stateType);
+        internal bool RaiseIsTransitionEnabled(Type sourceType, Type targetType) => IsTransitionEnabled(sourceType, targetType);
+        internal bool RaiseStrictTransitions() => StrictTransitions;
         internal void RaiseChangingState() => OnChangingState();
         internal void RaiseChangedState() => OnChangedState();
         internal void RaiseEnteringState(IState state) => OnEnteringState(state);
