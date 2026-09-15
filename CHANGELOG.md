@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Changing to a leaf at a different depth re-entered the whole chain.** `StateFactory.CreateState` compared the new chain with the active one by index counted from the current leaf, not from the root. When the old and new leaves sat at different depths the indexes never lined up, so every state — including the root and shared ancestors — was exited and entered again. `ChangeState` to an ancestor of the current leaf did the same. The factory now resolves the chain of types first (from `IChildState<T>` without instantiating, or from `IChildState.ParentState` of an instance for states implementing only the non-generic interface), reuses the longest prefix whose types match from the root and creates only the states below it. A change to an ancestor now exits only its descendants. Existing tests missed it because their factories return one shared instance per type, which the reference-based chain diff treats as reused.
+
 ## [0.0.1-alpha.1] — 2026-07-08
 
 Initial preview release of **Aspid.Core.HSM** — a Roslyn-powered Hierarchical State Machine for Unity 2022.3+, distributed as the UPM package `com.aspid.core.hsm`. The public API and generated boilerplate may still change before the first stable release.

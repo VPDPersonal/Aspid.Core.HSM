@@ -113,4 +113,9 @@ public class ChildTestState : BaseTestState, IChildState<ParentTestState> { }
 public class SiblingChildTestState : BaseTestState, IChildState<ParentTestState> { }
 
 public class GrandchildTestState : BaseTestState, IChildState<ChildTestState> { }
+
+public class NonGenericChildTestState : BaseTestState, IChildState
+{
+    public System.Type ParentState => typeof(ParentTestState);
+}
 #endregion
