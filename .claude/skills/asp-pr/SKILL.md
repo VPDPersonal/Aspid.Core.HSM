@@ -2,11 +2,12 @@
 name: asp-pr
 description: "Create or update a pull request: title, body, labels, screenshots; push + gh in one chain."
 when_to_use: "Any pull request work: «открой пр», «сделай пр», «пр в main», «обнови пр / описание пр», «переведи в ready», «смержи пр», «пр стэком» (with `gh-stack`), «смени base». Load it before every `gh pr create/edit/ready/merge`."
-allowed-tools: Bash(git branch -m:*) Bash(git switch -c:*) Bash(git push -u origin HEAD) Bash(git config branch.:*) Bash(git diff:*) Bash(git log:*) Bash(cat:*) Bash(gh pr create:*) Bash(gh pr edit:*) Bash(gh pr view:*) Bash(gh pr ready:*) Bash(gh pr merge:*) Bash(gh pr checks:*) Bash(gh pr comment:*) Bash(gh api repos/*/pulls/*) Bash(sh ${CLAUDE_SKILL_DIR}/scripts/*) Bash(unity command screenshot:*) Bash(sips:*)
+shell: bash
+allowed-tools: Bash(git branch -m:*) Bash(git switch -c:*) Bash(git push -u origin HEAD) Bash(git config branch.:*) Bash(git diff:*) Bash(git log:*) Bash(cat:*) Bash(gh pr create:*) Bash(gh pr edit:*) Bash(gh pr view:*) Bash(gh pr ready:*) Bash(gh pr merge:*) Bash(gh pr checks:*) Bash(gh pr comment:*) Bash(gh api repos/*/pulls/*) Bash(sh "${CLAUDE_SKILL_DIR}/scripts/*) Bash(unity command screenshot:*) Bash(sips:*)
 ---
 
 ```!
-sh ${CLAUDE_SKILL_DIR}/scripts/ctx.sh
+sh "${CLAUDE_SKILL_DIR}/scripts/ctx.sh"
 ```
 
 ## Context lines
@@ -47,7 +48,7 @@ Before a branch step, load the `asp-branch` skill to get `<name>`.
 cat > <scratch>/pr-body.md <<'BODY'
 ...body...
 BODY
-sh ${CLAUDE_SKILL_DIR}/scripts/check-length.sh '<title>' \
+sh "${CLAUDE_SKILL_DIR}/scripts/check-length.sh" '<title>' \
   && [<branch step> &&] git config branch.<cur>.gh-merge-base <base> && git push -u origin HEAD \
   && gh pr create --draft --title "<title>" --body-file <scratch>/pr-body.md [--label <label>] [--attach './before.png#Before'] \
   && gh pr view --json url,isDraft,labels -q '"\(.url) draft=\(.isDraft) \(.labels|map(.name)|join(","))"'
@@ -245,7 +246,7 @@ Defaults. The repo's review rules for the bot (for example `.github/claude-revie
 
 A nested package or folder with its own `.git`. The context lines above do not cover it.
 
-1. Run `sh ${CLAUDE_SKILL_DIR}/scripts/ctx.sh <repo>`. Act on its context lines.
+1. Run `sh "${CLAUDE_SKILL_DIR}/scripts/ctx.sh" <repo>`. Act on its context lines.
 2. Run the chain in a subshell: `(cd <repo> && …)`.
 
 ### PR from a fork

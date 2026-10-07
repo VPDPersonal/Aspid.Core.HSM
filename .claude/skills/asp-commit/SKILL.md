@@ -3,11 +3,12 @@ name: asp-commit
 description: "Git commit + push of current-session changes only, in one Bash chain."
 when_to_use: "`/asp-commit`, «закоммить», «комить», «комит», «комить и пуш», «запушь», «commit changes», «push»; any commit request, also after a long task."
 effort: low
-allowed-tools: Bash(sh ${CLAUDE_SKILL_DIR}/scripts/*) Bash(git switch -c:*) Bash(git branch -m:*) Bash(git diff:*) Bash(git add:*) Bash(git rm --cached:*) Bash(git commit:*) Bash(git push -u origin HEAD)
+shell: bash
+allowed-tools: Bash(sh "${CLAUDE_SKILL_DIR}/scripts/*) Bash(git switch -c:*) Bash(git branch -m:*) Bash(git diff:*) Bash(git add:*) Bash(git rm --cached:*) Bash(git commit:*) Bash(git push -u origin HEAD)
 ---
 
 ```!
-sh ${CLAUDE_SKILL_DIR}/scripts/ctx.sh
+sh "${CLAUDE_SKILL_DIR}/scripts/ctx.sh"
 ```
 
 ## Hint lines
@@ -46,7 +47,7 @@ Run no other git commands, except `git diff` in [Pick the files](#pick-the-files
 ### The chain
 
 ```sh
-sh ${CLAUDE_SKILL_DIR}/scripts/check-length.sh '<subject>' \
+sh "${CLAUDE_SKILL_DIR}/scripts/check-length.sh" '<subject>' \
   && [<branch step> &&] git add -- <paths> && git commit -m "$(cat <<'MSG'
 <subject>
 
@@ -77,7 +78,7 @@ On `CLEAN`:
 - **Untrack a file but keep it on disk.** Run `git rm --cached -- <file> && git commit -m …` with no `-- <paths>`.
   With `-- <file>`, the commit adds the file back from disk.
 - **Files in another repo** (outside cwd, a package with its own `.git`). The hint lines above do not cover it.
-  1. Run `sh ${CLAUDE_SKILL_DIR}/scripts/ctx.sh <repo>`. Act on its hint lines.
+  1. Run `sh "${CLAUDE_SKILL_DIR}/scripts/ctx.sh" <repo>`. Act on its hint lines.
   2. Run a separate chain with `git -C <repo>` in every git command. Do not use `cd`.
   3. Never `git add` a folder that holds its own `.git`.
 - **A `pre-commit` or `commit-msg` hook failed.** Fix the cause.
