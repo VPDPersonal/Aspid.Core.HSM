@@ -1,0 +1,12 @@
+<Project>
+
+    <!-- Aspid.Generators.Helper* versions, shared by the generator (which merges them into the committed
+         DLL) and the Sample (which loads them as analyzers next to the unmerged generator).
+         Exact versions, in brackets: a bare version is only a lower bound, and the DLL these are
+         merged into is committed, so every checkout must restore the same helpers. -->
+    <PropertyGroup>
+        <AspidGeneratorsHelperVersion>[0.1.0]</AspidGeneratorsHelperVersion>
+        <AspidGeneratorsHelperUnityVersion>[0.1.0]</AspidGeneratorsHelperUnityVersion>
+    </PropertyGroup>
+
+</Project>

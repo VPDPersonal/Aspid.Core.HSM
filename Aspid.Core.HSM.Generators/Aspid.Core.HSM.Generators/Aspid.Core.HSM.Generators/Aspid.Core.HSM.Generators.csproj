@@ -11,19 +11,30 @@
 
         <RootNamespace>Aspid.Core.HSM.Generators</RootNamespace>
         <PackageId>Aspid.Core.HSM.Generators</PackageId>
+
+        <!-- The built DLL is committed into the Unity package, so identical sources must yield an
+             identical binary on any machine: the release workflow rebuilds it and diffs the bytes.
+             These settings keep the commit SHA and absolute checkout paths out of the PE. -->
+        <Deterministic>true</Deterministic>
+        <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+        <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+        <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+        <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Aspid.Generators.Helper" Version="0.1.0" />
-        <PackageReference Include="Aspid.Generators.Helper.Unity" Version="0.1.0" />
-        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4">
+        <!-- Pinned to exact versions in Directory.Build.props, shared with the Sample project. -->
+        <PackageReference Include="Aspid.Generators.Helper" Version="$(AspidGeneratorsHelperVersion)" />
+        <PackageReference Include="Aspid.Generators.Helper.Unity" Version="$(AspidGeneratorsHelperUnityVersion)" />
+        <PackageReference ExcludeAssets="runtime" Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.3.0"/>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.3.0"/>
-        <PackageReference Include="SourceGenerator.Foundations" Version="2.0.14" />
+        <PackageReference ExcludeAssets="runtime" Include="Microsoft.CodeAnalysis.CSharp" Version="4.3.0"/>
+        <!-- Merges Aspid.Generators.Helper* into the single DLL Unity references (see Directory.Build.targets).
+             Never add SourceGenerator.Foundations here: its injected module initializer writes to Console,
+             which deadlocks Unity's VBCSCompiler when the stdout pipe buffer fills. -->
+        <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.45" PrivateAssets="all" />
     </ItemGroup>
-
 
 </Project>
