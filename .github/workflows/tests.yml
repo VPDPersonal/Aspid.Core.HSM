@@ -85,7 +85,8 @@ jobs:
   # Compiles the package and its Game Loop sample in a throwaway project on the minimum Unity that package.json
   # promises, and runs the EditMode tests there. Only the minimum is checked: the dev project covers the newest.
   unity:
-    name: Unity ${{ matrix.unity }}
+    # A fixed name: a skipped job does not expand the matrix, and a required check needs a stable name.
+    name: Unity minimum
     needs: unity-license
     if: needs.unity-license.outputs.available == 'true'
     runs-on: ubuntu-latest
