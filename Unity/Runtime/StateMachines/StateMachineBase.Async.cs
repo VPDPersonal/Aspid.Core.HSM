@@ -139,13 +139,29 @@ namespace Aspid.Core.HSM
         {
             OnExitingState(state);
             {
-                // Stop waiting on cancellation even if the callback ignores the token. A callback that awaits
-                // the superseding transition would otherwise deadlock: that transition waits for this unwind.
                 if (state is IAsyncExitController asyncExit)
+                {
+                    // Stop waiting on cancellation even if the callback ignores the token. A callback that awaits
+                    // the superseding transition would otherwise deadlock: that transition waits for this unwind.
                     await asyncExit.OnExitAsync(cancellationToken).AttachExternalCancellation(cancellationToken);
+
+                    // Only synchronous segments are measured: a profiler sample cannot span an await.
+#if ENABLE_PROFILER
+                    using (GetMarkers(state).Exit.Auto())
+#endif
+                    state.Exit();
+                }
                 else
-                    state.GetController<IExitController>()?.OnExit();
-                state.Exit();
+                {
+                    // No await here, so one sample, the same as the synchronous ExitState.
+#if ENABLE_PROFILER
+                    using (GetMarkers(state).Exit.Auto())
+#endif
+                    {
+                        state.GetController<IExitController>()?.OnExit();
+                        state.Exit();
+                    }
+                }
             }
             OnExitedState(state);
 
@@ -156,13 +172,32 @@ namespace Aspid.Core.HSM
         {
             OnEnteringState(state);
             {
-                _stateFactory.MarkInitialized(state);
-                state.Enter();
-                // Same as in ExitStateAsync: a redirecting callback awaits the transition that supersedes this one.
                 if (state is IAsyncEnterController asyncEnter)
+                {
+                    // Only synchronous segments are measured: a profiler sample cannot span an await.
+#if ENABLE_PROFILER
+                    using (GetMarkers(state).Enter.Auto())
+#endif
+                    {
+                        _stateFactory.MarkInitialized(state);
+                        state.Enter();
+                    }
+
+                    // Same as in ExitStateAsync: a redirecting callback awaits the transition that supersedes this one.
                     await asyncEnter.OnEnterAsync(cancellationToken).AttachExternalCancellation(cancellationToken);
+                }
                 else
-                    state.GetController<IEnterController>()?.OnEnter();
+                {
+                    // No await here, so one sample, the same as the synchronous EnterState.
+#if ENABLE_PROFILER
+                    using (GetMarkers(state).Enter.Auto())
+#endif
+                    {
+                        _stateFactory.MarkInitialized(state);
+                        state.Enter();
+                        state.GetController<IEnterController>()?.OnEnter();
+                    }
+                }
             }
             OnEnteredState(state);
         }
