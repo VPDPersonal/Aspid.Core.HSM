@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using Xunit;
 
 namespace Aspid.Core.HSM.Generators.Tests.StateMachineTests;
@@ -436,21 +438,21 @@ public class StateMachineBaseTests
     }
 
     [Fact]
-    public void ChangeState_WithNonGenericChildState_ShouldResolveParentFromInstance()
+    public void ChangeState_WithNonGenericChildState_ShouldThrowWithoutTouchingTheChain()
     {
         var factory = CreateTransientHierarchyFactory();
         factory.RegisterState<NonGenericChildTestState>();
         var stateMachine = new TestableStateMachine(factory);
 
         stateMachine.ChangeState<GrandchildTestState>();
-        var parentState = (ParentTestState)stateMachine.CurrentStates[0];
+        var chain = stateMachine.CurrentStates.ToArray();
 
-        stateMachine.ChangeState<NonGenericChildTestState>();
+        // The parent must be readable from the type: the state is created inside its parent's scope.
+        var exception = Assert.Throws<InvalidOperationException>(() => stateMachine.ChangeState<NonGenericChildTestState>());
 
-        Assert.Same(parentState, stateMachine.CurrentStates[0]);
-        Assert.Equal(0, parentState.ExitCalled);
-        Assert.IsType<NonGenericChildTestState>(stateMachine.CurrentStates[1]);
-        Assert.Equal(2, stateMachine.CurrentStates.Count);
+        Assert.Contains("IChildState<TParent>", exception.Message);
+        Assert.Equal(chain, stateMachine.CurrentStates.ToArray());
+        Assert.DoesNotContain(factory.CreatedWithScope, entry => entry.Type == typeof(NonGenericChildTestState));
     }
 
     private static TestStateFactory CreateTransientHierarchyFactory()

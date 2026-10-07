@@ -62,22 +62,20 @@ public class ReentrancyAndGuardsTests
     }
 
     // The factory used to hand out its own chain buffer, so the previous result silently
-    // became the next result. Callers may now hold a chain across further factory calls.
+    // became the next result. The chain is now written into a list the caller owns.
     [Fact]
-    public void CreateState_result_is_not_invalidated_by_a_later_call()
+    public void BuildTypeChain_fills_the_callers_list_without_creating_states()
     {
         var factory = CreateHierarchyFactory();
-        factory.RegisterState<SimpleTestStateForFactory>();
-        var empty = Array.Empty<IState>();
+        var first = new List<Type>();
+        var second = new List<Type>();
 
-        // A two-state chain first, then a one-state chain: a shared buffer would shrink `first` underneath us.
-        var first = factory.CreateState<ChildTestState>(empty);
-        var snapshot = first.ToArray();
+        factory.BuildTypeChain(typeof(GrandchildTestState), first);
+        factory.BuildTypeChain(typeof(ParentTestState), second);
 
-        factory.CreateState<SimpleTestStateForFactory>(empty);
-
-        Assert.Equal(snapshot.Length, first.Count);
-        Assert.Equal(snapshot, first.ToArray());
+        Assert.Equal(new[] { typeof(ParentTestState), typeof(ChildTestState), typeof(GrandchildTestState) }, first);
+        Assert.Equal(new[] { typeof(ParentTestState) }, second);
+        Assert.Empty(factory.CreatedWithScope);
     }
 
     // A ChangeState issued from OnEnter used to rewrite the chain the outer loop was still
