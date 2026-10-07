@@ -8,3 +8,7 @@
 # Re-include them here: repository rules take precedence over core.excludesFile.
 !**/*~/
 !**/*~/**
+
+# Claude Code: personal settings and app worktrees
+.claude/settings.local.json
+.claude/worktrees/
