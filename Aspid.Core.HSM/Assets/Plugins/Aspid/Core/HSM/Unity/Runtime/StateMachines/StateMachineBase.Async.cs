@@ -7,15 +7,10 @@ namespace Aspid.Core.HSM
 {
     public partial class StateMachineBase
     {
-        // The in-flight core transition, kept so a superseding call can await its unwind before
-        // mutating _currentStates. Preserved so it can be awaited by both the original caller and
-        // the superseder. default(UniTask) is an already-completed task, so no null check is needed.
-        private UniTask _activeTransitionTask;
-
-        // True only while the async core is running its exit/enter callbacks. A transition started from
-        // inside one of those callbacks would await the very task it is running on, so it is rejected
-        // with a diagnosable exception instead of deadlocking.
-        private bool _isChangingStateAsync;
+        // Completes once the in-flight core transition has unwound. It is assigned together with
+        // _activeTransitionCts and before the core starts, so a call made from inside the core's first
+        // synchronous segment also waits for the unwind. default(UniTask) is an already-completed task.
+        private UniTask _activeTransitionUnwound;
 
         /// <summary>
         /// Asynchronously transitions to <typeparamref name="TState"/>. Cancels any in-progress
@@ -24,8 +19,22 @@ namespace Aspid.Core.HSM
         /// <see cref="IAsyncEnterController"/> or <see cref="IAsyncExitController"/> are awaited;
         /// others fall back to synchronous controllers.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A cancelled transition stops waiting for its async enter/exit callback at once, even if the callback
+        /// ignores the token. The callback keeps running on its own, so it must observe the token to stop early.
+        /// </para>
+        /// <para>
+        /// For the same reason, an async enter callback can redirect the machine by awaiting this method:
+        /// the new call supersedes the transition that runs the callback. An async exit callback must not do this:
+        /// its state stays active, so the new transition exits it again and the callback runs again.
+        /// </para>
+        /// </remarks>
         /// <typeparam name="TState">The target leaf state type.</typeparam>
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
+        /// <exception cref="InvalidOperationException">
+        /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// </exception>
         public UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState =>
             ChangeStateAsync(typeof(TState), cancellationToken);
@@ -33,51 +42,61 @@ namespace Aspid.Core.HSM
         /// <inheritdoc cref="ChangeStateAsync{TState}"/>
         /// <param name="stateType">The target leaf state type.</param>
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
-        /// <exception cref="InvalidOperationException">
-        /// Called from inside an async enter/exit callback of the transition already running.
-        /// </exception>
         public async UniTask ChangeStateAsync(Type stateType, CancellationToken cancellationToken = default)
         {
-            if (_isChangingStateAsync)
-                throw new InvalidOperationException(
-                    "ChangeStateAsync was called from inside the async enter/exit callbacks of the transition " +
-                    "that is currently running. Awaiting it would deadlock, because the running transition " +
-                    "cannot unwind until this call returns. Start the follow-up transition after the current " +
-                    "one completes, or use the synchronous ChangeState, which queues re-entrant requests.");
+            ThrowIfSyncChangeInProgress();
 
             if (!IsStateEnabled(stateType))
                 return;
 
-            var previous = _activeTransitionCts;
-            if (previous is not null)
-            {
-                previous.Cancel();
-                // Wait for the superseded transition to fully unwind before we touch _currentStates.
-                // Its outcome (including faults) is surfaced to its own caller, so swallow it here.
-                try { await _activeTransitionTask; }
-                catch { /* superseded transition's result belongs to its original caller */ }
-            }
+            await SupersedeActiveTransitionAsync();
 
-            // Re-read the leaf only after the superseded transition has unwound: the edge being guarded
+            // Read the leaf only after the superseded transition has unwound: the edge being guarded
             // is the one actually taken, not the one that was current when this call was made.
             if (!IsTransitionEnabled(_currentStates[^1].GetType(), stateType))
                 return;
 
+            await RunTransitionCoreAsync(stateType, cancellationToken);
+        }
+
+        private async UniTask SupersedeActiveTransitionAsync()
+        {
+            // A loop, not a single check: several callers can wait for the same unwind. The first one to
+            // resume starts a new transition, which the next one must supersede in turn.
+            while (_activeTransitionCts is { } previous)
+            {
+                // Read before Cancel: the core can unwind inside Cancel and reset the field.
+                var unwound = _activeTransitionUnwound;
+                previous.Cancel();
+                await unwound;
+            }
+        }
+
+        // Runs the core with no guard checks: every caller has checked the guards already.
+        private async UniTask RunTransitionCoreAsync(Type stateType, CancellationToken cancellationToken)
+        {
+            // Guards and transition hooks run between the caller's supersede and this point.
+            // If one of them started a transition, supersede it too: two cores must never run at once.
+            await SupersedeActiveTransitionAsync();
+
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var unwound = new UniTaskCompletionSource();
             _activeTransitionCts = linked;
-            var task = ChangeStateCoreAsync(stateType, linked.Token).Preserve();
-            _activeTransitionTask = task;
+            _activeTransitionUnwound = unwound.Task;
             try
             {
-                await task;
+                await ChangeStateCoreAsync(stateType, linked.Token);
             }
             finally
             {
                 if (ReferenceEquals(_activeTransitionCts, linked))
                 {
                     _activeTransitionCts = null;
-                    _activeTransitionTask = default;
+                    _activeTransitionUnwound = default;
                 }
+
+                // Signal last: a waiting superseder resumes inside this call and must find the machine idle.
+                unwound.TrySetResult();
             }
         }
 
@@ -88,7 +107,6 @@ namespace Aspid.Core.HSM
                 // Rented per in-flight transition: the chain is read across awaits, so a buffer shared
                 // with the factory or with another transition would be rewritten underneath this loop.
                 var newChain = RentTypeChainBuffer();
-                _isChangingStateAsync = true;
                 try
                 {
                     _stateFactory.BuildTypeChain(stateType, newChain);
@@ -110,7 +128,6 @@ namespace Aspid.Core.HSM
                 }
                 finally
                 {
-                    _isChangingStateAsync = false;
                     ReturnTypeChainBuffer(newChain);
                 }
             }
@@ -125,20 +142,28 @@ namespace Aspid.Core.HSM
             OnExitingState(state);
             {
                 if (state is IAsyncExitController asyncExit)
-                    await asyncExit.OnExitAsync(cancellationToken);
-                else
                 {
+                    // Stop waiting on cancellation even if the callback ignores the token. A callback that awaits
+                    // the superseding transition would otherwise deadlock: that transition waits for this unwind.
+                    await asyncExit.OnExitAsync(cancellationToken).AttachExternalCancellation(cancellationToken);
+
+                    // Only synchronous segments are measured: a profiler sample cannot span an await.
 #if ENABLE_PROFILER
                     using (GetMarkers(state).Exit.Auto())
 #endif
-                    state.GetController<IExitController>()?.OnExit();
+                    state.Exit();
                 }
-
-                // Only synchronous segments are measured: a profiler sample cannot span an await.
+                else
+                {
+                    // No await here, so one sample, the same as the synchronous ExitState.
 #if ENABLE_PROFILER
-                using (GetMarkers(state).Exit.Auto())
+                    using (GetMarkers(state).Exit.Auto())
 #endif
-                state.Exit();
+                    {
+                        state.GetController<IExitController>()?.OnExit();
+                        state.Exit();
+                    }
+                }
             }
             OnExitedState(state);
 
@@ -149,23 +174,31 @@ namespace Aspid.Core.HSM
         {
             OnEnteringState(state);
             {
-                // Only synchronous segments are measured: a profiler sample cannot span an await.
-#if ENABLE_PROFILER
-                using (GetMarkers(state).Enter.Auto())
-#endif
-                {
-                    _stateFactory.MarkInitialized(state);
-                    state.Enter();
-                }
-
                 if (state is IAsyncEnterController asyncEnter)
-                    await asyncEnter.OnEnterAsync(cancellationToken);
-                else
                 {
+                    // Only synchronous segments are measured: a profiler sample cannot span an await.
 #if ENABLE_PROFILER
                     using (GetMarkers(state).Enter.Auto())
 #endif
-                    state.GetController<IEnterController>()?.OnEnter();
+                    {
+                        _stateFactory.MarkInitialized(state);
+                        state.Enter();
+                    }
+
+                    // Same as in ExitStateAsync: a redirecting callback awaits the transition that supersedes this one.
+                    await asyncEnter.OnEnterAsync(cancellationToken).AttachExternalCancellation(cancellationToken);
+                }
+                else
+                {
+                    // No await here, so one sample, the same as the synchronous EnterState.
+#if ENABLE_PROFILER
+                    using (GetMarkers(state).Enter.Auto())
+#endif
+                    {
+                        _stateFactory.MarkInitialized(state);
+                        state.Enter();
+                        state.GetController<IEnterController>()?.OnEnter();
+                    }
                 }
             }
             OnEnteredState(state);

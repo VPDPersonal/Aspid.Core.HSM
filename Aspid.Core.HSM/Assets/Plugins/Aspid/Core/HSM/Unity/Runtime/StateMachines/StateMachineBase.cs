@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 #if ENABLE_PROFILER
+using System.Text;
 using Unity.Profiling;
 #endif
 
@@ -22,6 +23,10 @@ namespace Aspid.Core.HSM
         private readonly Queue<PendingRequest> _pendingRequests = new();
         private bool _isChangingState;
         private bool _isTicking;
+
+        // Index of the extension the running tick is at, or -1 outside a tick. DetachExtensionAt shifts it
+        // when it removes an extension at or before it, so the tick does not skip the next extension.
+        private int _tickedExtensionIndex = -1;
 
         private CancellationTokenSource? _activeTransitionCts;
 
@@ -70,7 +75,7 @@ namespace Aspid.Core.HSM
             {
                 // Indexed rather than foreach: a controller may still attach or detach an extension, or start
                 // an async transition, and those change the lists mid-tick. An index sees them as they are now:
-                // a state or extension removed before its turn is skipped instead of throwing.
+                // a state or extension removed before its turn is not ticked, and nothing throws.
                 for (var i = 0; i < _currentStates.Count; i++)
                 {
                     var state = _currentStates[i];
@@ -84,9 +89,9 @@ namespace Aspid.Core.HSM
                     }
                 }
 
-                for (var i = 0; i < _activeExtensions.Count; i++)
+                for (_tickedExtensionIndex = 0; _tickedExtensionIndex < _activeExtensions.Count; _tickedExtensionIndex++)
                 {
-                    var extension = _activeExtensions[i];
+                    var extension = _activeExtensions[_tickedExtensionIndex];
                     var controller = extension.GetController<TController>();
                     if (controller is not null && IsControllerEnabled(controller, extension))
                     {
@@ -106,6 +111,7 @@ namespace Aspid.Core.HSM
             finally
             {
                 _isTicking = false;
+                _tickedExtensionIndex = -1;
             }
 
             if (_pendingRequests.Count > 0)
@@ -147,6 +153,12 @@ namespace Aspid.Core.HSM
             if (!IsTransitionEnabled(_currentStates[^1].GetType(), stateType))
                 return;
 
+            ChangeStateCore(stateType);
+        }
+
+        // Diffs and swaps the chain with no guard checks: every caller has checked the guards already.
+        private void ChangeStateCore(Type stateType)
+        {
             OnChangingState();
             {
                 // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
@@ -399,18 +411,54 @@ namespace Aspid.Core.HSM
         }
 
         // Full name with readable generic arguments, so two closings of one generic state get separate markers.
+        // Nested types are joined with '.', and each segment keeps its own arguments: NS.Outer<System.Int32>.Inner.
+        // ControllerGroupBody.GetMarkerTypeName names controller markers in the same format, tuples included.
         private static string GetMarkerTypeName(Type type)
         {
-            if (!type.IsGenericType)
-                return type.FullName ?? type.Name;
+            if (type.IsArray)
+                return $"{GetMarkerTypeName(type.GetElementType()!)}[{new string(',', type.GetArrayRank() - 1)}]";
 
-            var definitionName = type.GetGenericTypeDefinition().FullName ?? type.Name;
-            var tickIndex = definitionName.IndexOf('`');
-            if (tickIndex >= 0)
-                definitionName = definitionName.Substring(0, tickIndex);
+            if (type.IsGenericParameter)
+                return type.Name;
 
-            var arguments = Array.ConvertAll(type.GetGenericArguments(), GetMarkerTypeName);
-            return $"{definitionName}<{string.Join(", ", arguments)}>";
+            var builder = new StringBuilder();
+            if (!string.IsNullOrEmpty(type.Namespace))
+                builder.Append(type.Namespace).Append('.');
+
+            AppendMarkerTypeSegment(builder, type, type.GetGenericArguments());
+            return builder.ToString();
+        }
+
+        // A nested type lists the arguments of its declaring types too. Each segment takes only the arguments
+        // its own arity adds, so Outer<A>.Inner<B> does not collapse into Outer<A, B>. Returns the arguments used.
+        private static int AppendMarkerTypeSegment(StringBuilder builder, Type segment, Type[] arguments)
+        {
+            var start = 0;
+            if (segment.DeclaringType is { } declaringType)
+            {
+                start = AppendMarkerTypeSegment(builder, declaringType, arguments);
+                builder.Append('.');
+            }
+
+            var name = segment.Name;
+            var tickIndex = name.IndexOf('`');
+            builder.Append(name, 0, tickIndex >= 0 ? tickIndex : name.Length);
+
+            var end = segment.GetGenericArguments().Length;
+            if (end > start)
+            {
+                builder.Append('<');
+                for (var i = start; i < end; i++)
+                {
+                    if (i > start)
+                        builder.Append(", ");
+
+                    builder.Append(GetMarkerTypeName(arguments[i]));
+                }
+                builder.Append('>');
+            }
+
+            return end;
         }
 
         private sealed class StateMarkers
