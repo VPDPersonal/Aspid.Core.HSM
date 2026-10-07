@@ -13,6 +13,9 @@ namespace Aspid.Core.HSM
     public abstract class StateFactory
     {
         private readonly HashSet<Type> _initializedStates = new();
+        private readonly List<Type> _typeChainBuffer = new(capacity: 4);
+        private readonly List<IState?> _probedStatesBuffer = new(capacity: 4);
+        private readonly Dictionary<Type, Type?> _parentTypeCache = new();
 
         private IStateScope? _rootScope;
         private readonly Dictionary<Type, IStateScope> _activeScopes = new();
@@ -20,8 +23,16 @@ namespace Aspid.Core.HSM
 
         /// <summary>
         /// Builds the full root-to-leaf state chain for <typeparamref name="TState"/>,
-        /// reusing states from <paramref name="activeStates"/> where types match at the same depth.
+        /// reusing the longest prefix of <paramref name="activeStates"/> whose types match the new chain
+        /// position by position from the root. Only the states below that shared prefix are created.
         /// </summary>
+        /// <remarks>
+        /// The chain of types is resolved first — from <see cref="IChildState{T}"/> without instantiating
+        /// the state, or from <see cref="IChildState.ParentState"/> of a created instance when the state
+        /// implements only the non-generic <see cref="IChildState"/> — and only then compared with the active
+        /// chain. Comparing from the root keeps shared ancestors alive when the old and new leaves sit at
+        /// different depths, and lets a change to an ancestor of the current leaf exit only its descendants.
+        /// </remarks>
         /// <typeparam name="TState">The target leaf state type.</typeparam>
         /// <param name="activeStates">The currently active state chain for reuse comparison.</param>
         /// <returns>
@@ -62,24 +73,71 @@ namespace Aspid.Core.HSM
         public void CreateState(Type leafType, IReadOnlyList<IState> activeStates, List<IState> destination)
         {
             destination.Clear();
-            BuildChain(leafType, activeStates, activeStates.Count - 1, destination);
-        }
+            _typeChainBuffer.Clear();
+            _probedStatesBuffer.Clear();
 
-        private void BuildChain(Type type, IReadOnlyList<IState> activeStates, int index, List<IState> destination)
-        {
-            if (index >= 0 && type == activeStates[index].GetType())
+            BuildTypeChain(leafType);
+
+            var sharedCount = 0;
+            var maxShared = Math.Min(activeStates.Count, _typeChainBuffer.Count);
+
+            while (sharedCount < maxShared && activeStates[sharedCount].GetType() == _typeChainBuffer[sharedCount])
+                sharedCount++;
+
+            for (var i = 0; i < _typeChainBuffer.Count; i++)
             {
-                for (var i = 0; i <= index; i++)
-                    destination.Add(activeStates[i]);
-                return;
+                var state = i < sharedCount
+                    ? activeStates[i]
+                    : _probedStatesBuffer[i] ?? CreateStateInternal(_typeChainBuffer[i]);
+
+                destination.Add(state);
             }
 
-            var state = CreateStateInternal(type);
+            _probedStatesBuffer.Clear();
+        }
 
-            if (state is IChildState childState)
-                BuildChain(childState.ParentState, activeStates, index - 1, destination);
+        private void BuildTypeChain(Type type)
+        {
+            IState? probedState = null;
 
-            destination.Add(state);
+            if (!TryGetParentType(type, out var parentType))
+            {
+                probedState = CreateStateInternal(type);
+                parentType = (probedState as IChildState)?.ParentState;
+            }
+
+            if (parentType is not null)
+                BuildTypeChain(parentType);
+
+            _typeChainBuffer.Add(type);
+            _probedStatesBuffer.Add(probedState);
+        }
+
+        private bool TryGetParentType(Type stateType, out Type? parentType)
+        {
+            if (_parentTypeCache.TryGetValue(stateType, out parentType))
+                return true;
+
+            if (typeof(IChildState).IsAssignableFrom(stateType))
+            {
+                foreach (var contract in stateType.GetInterfaces())
+                {
+                    if (!contract.IsGenericType || contract.GetGenericTypeDefinition() != typeof(IChildState<>))
+                        continue;
+
+                    parentType = contract.GetGenericArguments()[0];
+                    _parentTypeCache[stateType] = parentType;
+                    return true;
+                }
+
+                // Only the non-generic IChildState is implemented: the parent is known to the instance alone.
+                parentType = null;
+                return false;
+            }
+
+            parentType = null;
+            _parentTypeCache[stateType] = null;
+            return true;
         }
 
         /// <summary>

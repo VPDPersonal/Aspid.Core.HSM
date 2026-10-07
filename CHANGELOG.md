@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Changing to a leaf at a different depth re-entered the whole chain.** `StateFactory.CreateState` compared the new chain with the active one by index counted from the current leaf, not from the root. When the old and new leaves sat at different depths the indexes never lined up, so every state — including the root and shared ancestors — was exited and entered again. `ChangeState` to an ancestor of the current leaf did the same. The factory now resolves the chain of types first (from `IChildState<T>` without instantiating, or from `IChildState.ParentState` of an instance for states implementing only the non-generic interface), reuses the longest prefix whose types match from the root and creates only the states below it. A change to an ancestor now exits only its descendants. Existing tests missed it because their factories return one shared instance per type, which the reference-based chain diff treats as reused.
+- **A `[ControllerGroup]` whose enter threw or was cancelled halfway exited and ticked controllers it never entered.** A state stays in the chain when its enter fails, so it kept calling `Update` on those controllers, and the next transition called their `OnExit` — often on controllers that assume their enter ran. A group with an `IEnterController` / `IAsyncEnterController` path now remembers how far its enter got in `AddControllers` order: exit, update and dispose reach only those controllers (a controller whose own enter threw still gets its exit), the async sequential enter checks the cancellation token before each controller, and a completed exit resets the progress. In parallel async mode every controller is started at once, so the whole group counts as entered. Groups without an enter path are emitted as before.
+
 ## [0.0.1-alpha.2] — 2026-08-10
 
 Consumer-reported fixes from the first preview: the package is now legally installable, honest about its

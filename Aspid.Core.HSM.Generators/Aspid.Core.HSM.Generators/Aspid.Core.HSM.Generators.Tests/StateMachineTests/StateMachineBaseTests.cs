@@ -364,5 +364,103 @@ public class StateMachineBaseTests
         Assert.False(sameState.EnterCalled is 1);
         Assert.False(sameState.ExitCalled is 1);
     }
+
+    // The factories below create a new instance per request, as a DI container with transient
+    // registrations does. A factory returning one shared instance hides chain-reuse bugs, because the
+    // machine compares chains by reference.
+    [Fact]
+    public void ChangeState_FromDeeperLeafToShallowerLeaf_ShouldKeepSharedAncestor()
+    {
+        var factory = CreateTransientHierarchyFactory();
+        var stateMachine = new TestableStateMachine(factory);
+
+        stateMachine.ChangeState<GrandchildTestState>();
+        var parentState = (ParentTestState)stateMachine.CurrentStates[0];
+        var childState = (ChildTestState)stateMachine.CurrentStates[1];
+        var grandchildState = (GrandchildTestState)stateMachine.CurrentStates[2];
+        factory.ClearReleasedStates();
+
+        stateMachine.ChangeState<SiblingChildTestState>();
+
+        Assert.Same(parentState, stateMachine.CurrentStates[0]);
+        Assert.Equal(1, parentState.EnterCalled);
+        Assert.Equal(0, parentState.ExitCalled);
+        Assert.Equal(1, childState.ExitCalled);
+        Assert.Equal(1, grandchildState.ExitCalled);
+        Assert.IsType<SiblingChildTestState>(stateMachine.CurrentStates[1]);
+        Assert.Equal(2, stateMachine.CurrentStates.Count);
+        Assert.Equal(2, factory.ReleasedStates.Count);
+        Assert.DoesNotContain(parentState, factory.ReleasedStates);
+    }
+
+    [Fact]
+    public void ChangeState_FromShallowerLeafToDeeperLeaf_ShouldKeepSharedAncestor()
+    {
+        var factory = CreateTransientHierarchyFactory();
+        var stateMachine = new TestableStateMachine(factory);
+
+        stateMachine.ChangeState<SiblingChildTestState>();
+        var parentState = (ParentTestState)stateMachine.CurrentStates[0];
+        var siblingState = (SiblingChildTestState)stateMachine.CurrentStates[1];
+
+        stateMachine.ChangeState<GrandchildTestState>();
+
+        Assert.Same(parentState, stateMachine.CurrentStates[0]);
+        Assert.Equal(1, parentState.EnterCalled);
+        Assert.Equal(0, parentState.ExitCalled);
+        Assert.Equal(1, siblingState.ExitCalled);
+        Assert.IsType<ChildTestState>(stateMachine.CurrentStates[1]);
+        Assert.IsType<GrandchildTestState>(stateMachine.CurrentStates[2]);
+    }
+
+    [Fact]
+    public void ChangeState_ToAncestorOfCurrentLeaf_ShouldExitOnlyDescendants()
+    {
+        var factory = CreateTransientHierarchyFactory();
+        var stateMachine = new TestableStateMachine(factory);
+
+        stateMachine.ChangeState<GrandchildTestState>();
+        var parentState = (ParentTestState)stateMachine.CurrentStates[0];
+        var childState = (ChildTestState)stateMachine.CurrentStates[1];
+        var grandchildState = (GrandchildTestState)stateMachine.CurrentStates[2];
+
+        stateMachine.ChangeState<ChildTestState>();
+
+        Assert.Same(parentState, stateMachine.CurrentStates[0]);
+        Assert.Same(childState, stateMachine.CurrentStates[1]);
+        Assert.Equal(2, stateMachine.CurrentStates.Count);
+        Assert.Equal(0, parentState.ExitCalled);
+        Assert.Equal(0, childState.ExitCalled);
+        Assert.Equal(1, childState.EnterCalled);
+        Assert.Equal(1, grandchildState.ExitCalled);
+    }
+
+    [Fact]
+    public void ChangeState_WithNonGenericChildState_ShouldResolveParentFromInstance()
+    {
+        var factory = CreateTransientHierarchyFactory();
+        factory.RegisterState<NonGenericChildTestState>();
+        var stateMachine = new TestableStateMachine(factory);
+
+        stateMachine.ChangeState<GrandchildTestState>();
+        var parentState = (ParentTestState)stateMachine.CurrentStates[0];
+
+        stateMachine.ChangeState<NonGenericChildTestState>();
+
+        Assert.Same(parentState, stateMachine.CurrentStates[0]);
+        Assert.Equal(0, parentState.ExitCalled);
+        Assert.IsType<NonGenericChildTestState>(stateMachine.CurrentStates[1]);
+        Assert.Equal(2, stateMachine.CurrentStates.Count);
+    }
+
+    private static TestStateFactory CreateTransientHierarchyFactory()
+    {
+        var factory = new TestStateFactory();
+        factory.RegisterState<ParentTestState>();
+        factory.RegisterState<ChildTestState>();
+        factory.RegisterState<SiblingChildTestState>();
+        factory.RegisterState<GrandchildTestState>();
+        return factory;
+    }
     #endregion
 }
