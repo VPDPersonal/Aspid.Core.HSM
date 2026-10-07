@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- A compile gate, not a library: Unity 6000.0 compiles the package as C# 9 against .NET Standard 2.1.
+         The Tests project compiles the same sources with the latest C#, so a newer language feature
+         or API passes the tests and breaks only in Unity. This project fails first. -->
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <LangVersion>9</LangVersion>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>Aspid.Core.HSM</RootNamespace>
+    </PropertyGroup>
+
+    <Import Project="..\..\RuntimeSources.props" />
+
+    <ItemGroup>
+        <PackageReference Include="UniTask" Version="2.5.10" />
+    </ItemGroup>
+
+</Project>

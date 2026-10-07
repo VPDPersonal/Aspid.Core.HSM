@@ -1,0 +1,130 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet-tests:
+    name: .NET tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # The Tests project only: the Sample project takes UnityEngine from a local Unity install.
+      - name: Run generator and runtime tests
+        run: dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests --nologo
+
+  # Unity compiles the package as C# 9 against .NET Standard 2.1; the tests use the latest C#.
+  runtime-csharp9:
+    name: Runtime as C# 9
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Compile the runtime as Unity does
+        run: dotnet build Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Runtime --nologo
+
+  checks:
+    name: Package and skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Check the package
+        run: node scripts/check-package.mjs
+
+      - name: Check SKILL.md frontmatter
+        run: |
+          npm install --no-save --no-audit --no-fund js-yaml@4
+          node scripts/check-skills.mjs
+
+  # Secrets are unavailable to fork PRs and until the owner adds them; the Unity job is then skipped, not failed.
+  # Secrets for a Personal license (Unity no longer issues one through manual .alf activation):
+  #   UNITY_LICENSE   contents of the .ulf that Unity Hub writes after signing in and activating a Personal license
+  #                   (macOS /Library/Application Support/Unity/Unity_lic.ulf, Windows C:\ProgramData\Unity\Unity_lic.ulf,
+  #                   Linux ~/.local/share/unity3d/Unity/Unity_lic.ulf); repeat when Hub renews it
+  #   UNITY_EMAIL, UNITY_PASSWORD   that Unity account
+  unity-license:
+    name: Unity license
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - id: check
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::UNITY_LICENSE is not available; the Unity job is skipped."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Compiles the package and its Game Loop sample in a throwaway project on the minimum Unity that package.json
+  # promises, and runs the EditMode tests there. Only the minimum is checked: the dev project covers the newest.
+  unity:
+    name: Unity ${{ matrix.unity }}
+    needs: unity-license
+    if: needs.unity-license.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    strategy:
+      matrix:
+        # package.json promises 6000.0.53f1; GameCI publishes no image for it, so the oldest 6000.0 tested is this one.
+        unity: [6000.0.64f1]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create the test project
+        env:
+          UNITY: ${{ matrix.unity }}
+        run: scripts/make-unity-test-project.sh ci-unity-project "$UNITY"
+
+      - uses: actions/cache@v6
+        with:
+          path: ci-unity-project/Library
+          key: unity-library-${{ matrix.unity }}-${{ hashFiles('Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/**') }}
+          restore-keys: unity-library-${{ matrix.unity }}-
+
+      - uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ matrix.unity }}
+          projectPath: ci-unity-project
+          testMode: editmode
+          artifactsPath: unity-test-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Unity EditMode results (${{ matrix.unity }})
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: unity-test-results-${{ matrix.unity }}
+          path: unity-test-results

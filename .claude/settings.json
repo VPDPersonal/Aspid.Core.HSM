@@ -1,4 +1,15 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(dotnet test *)",
+      "Bash(dotnet build *)",
+      "Bash(node scripts/check-*)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh run view *)",
+      "Bash(gh run list *)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {

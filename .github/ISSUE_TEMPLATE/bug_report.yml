@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a bug or unexpected behavior in Aspid.Core.HSM.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What went wrong? What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps or a state hierarchy that reproduces the bug.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: unity-version
+    attributes:
+      label: Unity version
+      placeholder: "6000.0.x"
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: Aspid.Core.HSM version
+      placeholder: "0.0.1-alpha.1"
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Logs, generated code, screenshots — anything that helps.

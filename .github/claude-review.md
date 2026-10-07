@@ -26,7 +26,8 @@ Check, in this order:
    - the generator targets `netstandard2.0`, does not write to `Console` and does not reference `SourceGenerator.Foundations`;
    - a new file under `Assets/` ships with its `.meta`;
    - Unity manages `.meta` files: no `.meta` is edited by hand.
-3. Public API: a change needs an entry under `[Unreleased]` in `CHANGELOG.md`.
+3. Public API: a user-visible change should have an entry under `[Unreleased]` in `CHANGELOG.md`.
+   The CHANGELOG is not mandatory yet: a missing entry is at most `[minor]`.
    New or changed members need XML docs.
    A rename of a public attribute or type in the runtime needs an update of
    `Descriptions/HsmClasses.cs` or `HsmNamespaces.cs` in the generator.
