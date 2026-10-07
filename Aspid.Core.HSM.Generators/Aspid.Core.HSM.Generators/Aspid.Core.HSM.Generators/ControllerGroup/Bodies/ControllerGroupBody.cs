@@ -113,7 +113,9 @@ public static class ControllerGroupBody
             for (var i = 0; i < data.Controllers.Length; i++)
             {
                 var markerName = GetMarkerNameForController(i);
-                var controllerName = data.Controllers[i].Symbol.Name;
+                // Full name with generic arguments: CountdownController<ClassicDrivingState> and
+                // CountdownController<NetworkDrivingState> must not collapse into one profiler entry.
+                var controllerName = data.Controllers[i].Symbol.ToDisplayString();
 
                 code.AppendMultiline(
                     $"""

@@ -125,7 +125,17 @@ namespace Aspid.Core.HSM
                 if (state is IAsyncExitController asyncExit)
                     await asyncExit.OnExitAsync(cancellationToken);
                 else
+                {
+#if ENABLE_PROFILER
+                    using (GetMarkers(state).Exit.Auto())
+#endif
                     state.GetController<IExitController>()?.OnExit();
+                }
+
+                // Only synchronous segments are measured: a profiler sample cannot span an await.
+#if ENABLE_PROFILER
+                using (GetMarkers(state).Exit.Auto())
+#endif
                 state.Exit();
             }
             OnExitedState(state);
@@ -137,12 +147,24 @@ namespace Aspid.Core.HSM
         {
             OnEnteringState(state);
             {
-                _stateFactory.MarkInitialized(state);
-                state.Enter();
+                // Only synchronous segments are measured: a profiler sample cannot span an await.
+#if ENABLE_PROFILER
+                using (GetMarkers(state).Enter.Auto())
+#endif
+                {
+                    _stateFactory.MarkInitialized(state);
+                    state.Enter();
+                }
+
                 if (state is IAsyncEnterController asyncEnter)
                     await asyncEnter.OnEnterAsync(cancellationToken);
                 else
+                {
+#if ENABLE_PROFILER
+                    using (GetMarkers(state).Enter.Auto())
+#endif
                     state.GetController<IEnterController>()?.OnEnter();
+                }
             }
             OnEnteredState(state);
         }

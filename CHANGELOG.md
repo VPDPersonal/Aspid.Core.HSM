@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-state profiler markers.** Under `ENABLE_PROFILER` (Editor and development builds) the machine samples each state's enter, exit and update / late update / fixed update as `HSM.Enter <State>`, `HSM.Exit <State>`, `HSM.Update <State>` and so on, with the state's full type name and readable generic arguments. Async enter and exit sample only their synchronous segments, since a profiler sample cannot span an `await`.
+
+### Changed
+
+- `[ControllerGroup]` names each controller's profiler marker with the controller's full type name, generic arguments included (`Sample.CountdownController<Sample.DrivingState>`). It used the simple name, so every closing of a generic controller fell under a single marker.
+
 ### Fixed
 
 - **Changing to a leaf at a different depth re-entered the whole chain.** `StateFactory.CreateState` compared the new chain with the active one by index counted from the current leaf, not from the root. When the old and new leaves sat at different depths the indexes never lined up, so every state — including the root and shared ancestors — was exited and entered again. `ChangeState` to an ancestor of the current leaf did the same. The factory now resolves the chain of types first (from `IChildState<T>` without instantiating, or from `IChildState.ParentState` of an instance for states implementing only the non-generic interface), reuses the longest prefix whose types match from the root and creates only the states below it. A change to an ancestor now exits only its descendants. Existing tests missed it because their factories return one shared instance per type, which the reference-based chain diff treats as reused.

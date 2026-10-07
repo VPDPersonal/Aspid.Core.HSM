@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+#if ENABLE_PROFILER
+using Unity.Profiling;
+#endif
 
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
@@ -73,7 +76,12 @@ namespace Aspid.Core.HSM
                     var state = _currentStates[i];
                     var controller = state.GetController<TController>();
                     if (controller is not null && IsControllerEnabled(controller, state))
+                    {
+#if ENABLE_PROFILER
+                        using (GetMarkers(state).ForTick<TController>().Auto())
+#endif
                         invoke(controller, deltaTime);
+                    }
                 }
 
                 for (var i = 0; i < _activeExtensions.Count; i++)
@@ -81,7 +89,12 @@ namespace Aspid.Core.HSM
                     var extension = _activeExtensions[i];
                     var controller = extension.GetController<TController>();
                     if (controller is not null && IsControllerEnabled(controller, extension))
+                    {
+#if ENABLE_PROFILER
+                        using (GetMarkers(extension).ForTick<TController>().Auto())
+#endif
                         invoke(controller, deltaTime);
+                    }
                 }
             }
             catch
@@ -279,6 +292,9 @@ namespace Aspid.Core.HSM
         private void ExitState(IState state)
         {
             OnExitingState(state);
+#if ENABLE_PROFILER
+            using (GetMarkers(state).Exit.Auto())
+#endif
             {
                 state.GetController<IExitController>()?.OnExit();
                 state.Exit();
@@ -305,6 +321,9 @@ namespace Aspid.Core.HSM
         private void EnterState(IState state)
         {
             OnEnteringState(state);
+#if ENABLE_PROFILER
+            using (GetMarkers(state).Enter.Auto())
+#endif
             {
                 _stateFactory.MarkInitialized(state);
                 state.Enter();
@@ -355,6 +374,64 @@ namespace Aspid.Core.HSM
         /// Called after dispose logic completes.
         /// </summary>
         protected virtual void Disposed() { }
+        #endregion
+
+        #region Profiling
+#if ENABLE_PROFILER
+        // One set of markers per state type, shared by every machine: markers are registered with the
+        // profiler by name, so creating them once per type keeps the hot path allocation-free.
+        private static readonly Dictionary<Type, StateMarkers> _stateMarkers = new();
+
+        private static StateMarkers GetMarkers(IState state)
+        {
+            var type = state.GetType();
+            if (!_stateMarkers.TryGetValue(type, out var markers))
+                _stateMarkers[type] = markers = new StateMarkers(GetMarkerTypeName(type));
+
+            return markers;
+        }
+
+        // Full name with readable generic arguments, so two closings of one generic state get separate markers.
+        private static string GetMarkerTypeName(Type type)
+        {
+            if (!type.IsGenericType)
+                return type.FullName ?? type.Name;
+
+            var definitionName = type.GetGenericTypeDefinition().FullName ?? type.Name;
+            var tickIndex = definitionName.IndexOf('`');
+            if (tickIndex >= 0)
+                definitionName = definitionName.Substring(0, tickIndex);
+
+            var arguments = Array.ConvertAll(type.GetGenericArguments(), GetMarkerTypeName);
+            return $"{definitionName}<{string.Join(", ", arguments)}>";
+        }
+
+        private sealed class StateMarkers
+        {
+            public readonly ProfilerMarker Enter;
+            public readonly ProfilerMarker Exit;
+            private readonly ProfilerMarker _update;
+            private readonly ProfilerMarker _lateUpdate;
+            private readonly ProfilerMarker _fixedUpdate;
+
+            public StateMarkers(string typeName)
+            {
+                Enter = new ProfilerMarker($"HSM.Enter {typeName}");
+                Exit = new ProfilerMarker($"HSM.Exit {typeName}");
+                _update = new ProfilerMarker($"HSM.Update {typeName}");
+                _lateUpdate = new ProfilerMarker($"HSM.LateUpdate {typeName}");
+                _fixedUpdate = new ProfilerMarker($"HSM.FixedUpdate {typeName}");
+            }
+
+            public ProfilerMarker ForTick<TController>()
+                where TController : IController
+            {
+                if (typeof(TController) == typeof(IUpdateController)) return _update;
+                if (typeof(TController) == typeof(ILateUpdateController)) return _lateUpdate;
+                return _fixedUpdate;
+            }
+        }
+#endif
         #endregion
 
         #region Extension Points
