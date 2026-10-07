@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `StateFactory.CreateState<TState>(activeStates)`, `CreateState(Type, activeStates[, destination])` and `CreateInstance(Type)` are replaced by `BuildTypeChain(Type, List<Type>)`, which resolves the chain of types without creating states, and `CreateState(Type)`, which creates one state in its own scope. `GetParentType(Type)` exposes the declared parent. `MarkInitialized` no longer activates the scope — `CreateState` does.
 - **The parent must be declared with `IChildState<TParent>`.** A state implementing only the non-generic `IChildState` used to be instantiated to read its parent; since a state cannot exist before its scope, it now throws `InvalidOperationException` naming the type.
 - **An extension declaring `IChildState<TParent>` is scoped under that parent.** Its scope is a child of `TParent`'s scope, so it sees the parent's registrations; it attaches only while `TParent` is in the active chain and is detached before `TParent` exits, while its parent's scope is still alive. Leaf changes inside `TParent` leave it attached. An extension without `IChildState<>` is scoped under the root, as before.
+- **The minimum Unity is now 6000.0.53f1**, the same as in Aspid.FastTools. `package.json` promised Unity 2022.3, but the package was never built or tested there. CI now compiles the package and its sample on Unity 6000.0.
 
 ### Added
 
@@ -25,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The minimum Unity is now 6000.0.53f1**, the same as in Aspid.FastTools. `package.json` promised Unity 2022.3, but the package was never built or tested there. CI now compiles the package and its sample on Unity 6000.0.
 - `TransitionVia` and the async transition entry points no longer dispatch through `MethodInfo.Invoke`; the reflection-based generic dispatch was replaced by the new `Type`-based overloads.
 - `ChangeState` now rejects a call made during an async transition before consulting `IsStateEnabled`, so an in-flight async transition throws regardless of the target. Previously a target that `IsStateEnabled` refused returned silently instead.
 - README no longer claims UniTask is "pulled in automatically as a package dependency" — UPM does not resolve git dependencies transitively, so it never was. Installation now documents UniTask as an explicit first step with a pinned git URL.
