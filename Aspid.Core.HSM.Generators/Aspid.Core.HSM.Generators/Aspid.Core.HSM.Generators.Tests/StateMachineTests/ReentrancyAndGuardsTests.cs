@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using Xunit;
 
 namespace Aspid.Core.HSM.Generators.Tests.StateMachineTests;
@@ -25,6 +26,8 @@ public sealed class RedirectChildState : BaseTestState, IChildState<RedirectRoot
 public sealed class RedirectLeafState : BaseTestState, IChildState<RedirectChildState> { }
 
 public sealed class RedirectAltState : BaseTestState, IChildState<RedirectRootState> { }
+
+public sealed class RedirectRootToSimpleTransition : ITransition<RedirectRootState, SimpleTestState> { }
 
 /// <summary>State machine exposing the edge-level guard and strict mode for assertions.</summary>
 public sealed class GuardedStateMachine(StateFactory stateFactory) : StateMachineBase(stateFactory)
@@ -115,6 +118,39 @@ public class ReentrancyAndGuardsTests
         Assert.Equal(0, alt.ExitCalled);
     }
 
+    // An async change started from a synchronous OnEnter ran inside the running ChangeState: it released the parent,
+    // and the outer loop then added the child under the new root. The async entry points now fail instead.
+    [Fact]
+    public void Async_change_from_a_sync_OnEnter_fails_without_corrupting_the_chain()
+    {
+        var root = new RedirectRootState();
+        var child = new RedirectChildState();
+
+        var factory = new TestStateFactory();
+        factory.RegisterState<RedirectRootState>(() => root);
+        factory.RegisterState<RedirectChildState>(() => child);
+        factory.RegisterState<SimpleTestState>();
+
+        var sm = new TestableStateMachine(factory);
+        sm.RegisterTransition(new RedirectRootToSimpleTransition());
+
+        UniTask changeState = default, transitionTo = default, transitionVia = default;
+        root.RedirectOnce = () =>
+        {
+            changeState = sm.ChangeStateAsync<SimpleTestState>();
+            transitionTo = sm.TransitionToAsync<SimpleTestState>();
+            transitionVia = sm.TransitionViaAsync<RedirectRootToSimpleTransition>();
+        };
+
+        sm.ChangeState<RedirectChildState>();
+
+        Assert.Throws<InvalidOperationException>(() => changeState.GetAwaiter().GetResult());
+        Assert.Throws<InvalidOperationException>(() => transitionTo.GetAwaiter().GetResult());
+        Assert.Throws<InvalidOperationException>(() => transitionVia.GetAwaiter().GetResult());
+        Assert.Equal(new IState[] { root, child }, sm.CurrentStates.ToArray());
+        Assert.Equal(0, root.ExitCalled);
+    }
+
     [Fact]
     public void IsTransitionEnabled_blocks_a_denied_edge()
     {
@@ -200,6 +236,24 @@ public class ReentrancyAndGuardsTests
 
         sm.TransitionTo<SiblingChildTestState>();
 
+        Assert.IsType<SiblingChildTestState>(sm.CurrentStates[^1]);
+    }
+
+    // TransitionTo used to consult the guards a second time inside ChangeState, after OnBeforeTransition had run.
+    // A guard that changed its answer there skipped the state change but still ran OnAfterTransition.
+    [Fact]
+    public void TransitionTo_consults_the_edge_guard_once()
+    {
+        var sm = new GuardedStateMachine(CreateHierarchyFactory());
+        var transition = new ChildToSiblingSegmentTransition();
+        sm.RegisterTransition(transition);
+        sm.ChangeState<ChildTestState>();
+        sm.ObservedEdges.Clear();
+
+        sm.TransitionTo<SiblingChildTestState>();
+
+        Assert.Single(sm.ObservedEdges);
+        Assert.Equal(1, transition.AfterCount);
         Assert.IsType<SiblingChildTestState>(sm.CurrentStates[^1]);
     }
 
