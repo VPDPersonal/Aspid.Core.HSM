@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+#if ENABLE_PROFILER
+using System.Text;
+using Unity.Profiling;
+#endif
 
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
@@ -77,7 +81,12 @@ namespace Aspid.Core.HSM
                     var state = _currentStates[i];
                     var controller = state.GetController<TController>();
                     if (controller is not null && IsControllerEnabled(controller, state))
+                    {
+#if ENABLE_PROFILER
+                        using (GetMarkers(state).ForTick<TController>().Auto())
+#endif
                         invoke(controller, deltaTime);
+                    }
                 }
 
                 for (_tickedExtensionIndex = 0; _tickedExtensionIndex < _activeExtensions.Count; _tickedExtensionIndex++)
@@ -85,7 +94,12 @@ namespace Aspid.Core.HSM
                     var extension = _activeExtensions[_tickedExtensionIndex];
                     var controller = extension.GetController<TController>();
                     if (controller is not null && IsControllerEnabled(controller, extension))
+                    {
+#if ENABLE_PROFILER
+                        using (GetMarkers(extension).ForTick<TController>().Auto())
+#endif
                         invoke(controller, deltaTime);
+                    }
                 }
             }
             catch
@@ -290,6 +304,9 @@ namespace Aspid.Core.HSM
         private void ExitState(IState state)
         {
             OnExitingState(state);
+#if ENABLE_PROFILER
+            using (GetMarkers(state).Exit.Auto())
+#endif
             {
                 state.GetController<IExitController>()?.OnExit();
                 state.Exit();
@@ -316,6 +333,9 @@ namespace Aspid.Core.HSM
         private void EnterState(IState state)
         {
             OnEnteringState(state);
+#if ENABLE_PROFILER
+            using (GetMarkers(state).Enter.Auto())
+#endif
             {
                 _stateFactory.MarkInitialized(state);
                 state.Enter();
@@ -366,6 +386,101 @@ namespace Aspid.Core.HSM
         /// Called after dispose logic completes.
         /// </summary>
         protected virtual void Disposed() { }
+        #endregion
+
+        #region Profiling
+#if ENABLE_PROFILER
+        // One set of markers per state type, created on first use so the hot path stays allocation-free.
+        // Per machine rather than static: the cache is not synchronized, and machines may live on different
+        // threads. The profiler identifies a marker by name, so every machine still reports into one entry.
+        private readonly Dictionary<Type, StateMarkers> _stateMarkers = new();
+
+        private StateMarkers GetMarkers(IState state)
+        {
+            var type = state.GetType();
+            if (!_stateMarkers.TryGetValue(type, out var markers))
+                _stateMarkers[type] = markers = new StateMarkers(GetMarkerTypeName(type));
+
+            return markers;
+        }
+
+        // Full name with readable generic arguments, so two closings of one generic state get separate markers.
+        // Nested types are joined with '.', and each segment keeps its own arguments: NS.Outer<System.Int32>.Inner.
+        // ControllerGroupBody.GetMarkerTypeName names controller markers in the same format, tuples included.
+        private static string GetMarkerTypeName(Type type)
+        {
+            if (type.IsArray)
+                return $"{GetMarkerTypeName(type.GetElementType()!)}[{new string(',', type.GetArrayRank() - 1)}]";
+
+            if (type.IsGenericParameter)
+                return type.Name;
+
+            var builder = new StringBuilder();
+            if (!string.IsNullOrEmpty(type.Namespace))
+                builder.Append(type.Namespace).Append('.');
+
+            AppendMarkerTypeSegment(builder, type, type.GetGenericArguments());
+            return builder.ToString();
+        }
+
+        // A nested type lists the arguments of its declaring types too. Each segment takes only the arguments
+        // its own arity adds, so Outer<A>.Inner<B> does not collapse into Outer<A, B>. Returns the arguments used.
+        private static int AppendMarkerTypeSegment(StringBuilder builder, Type segment, Type[] arguments)
+        {
+            var start = 0;
+            if (segment.DeclaringType is { } declaringType)
+            {
+                start = AppendMarkerTypeSegment(builder, declaringType, arguments);
+                builder.Append('.');
+            }
+
+            var name = segment.Name;
+            var tickIndex = name.IndexOf('`');
+            builder.Append(name, 0, tickIndex >= 0 ? tickIndex : name.Length);
+
+            var end = segment.GetGenericArguments().Length;
+            if (end > start)
+            {
+                builder.Append('<');
+                for (var i = start; i < end; i++)
+                {
+                    if (i > start)
+                        builder.Append(", ");
+
+                    builder.Append(GetMarkerTypeName(arguments[i]));
+                }
+                builder.Append('>');
+            }
+
+            return end;
+        }
+
+        private sealed class StateMarkers
+        {
+            public readonly ProfilerMarker Enter;
+            public readonly ProfilerMarker Exit;
+            private readonly ProfilerMarker _update;
+            private readonly ProfilerMarker _lateUpdate;
+            private readonly ProfilerMarker _fixedUpdate;
+
+            public StateMarkers(string typeName)
+            {
+                Enter = new ProfilerMarker($"HSM.Enter {typeName}");
+                Exit = new ProfilerMarker($"HSM.Exit {typeName}");
+                _update = new ProfilerMarker($"HSM.Update {typeName}");
+                _lateUpdate = new ProfilerMarker($"HSM.LateUpdate {typeName}");
+                _fixedUpdate = new ProfilerMarker($"HSM.FixedUpdate {typeName}");
+            }
+
+            public ProfilerMarker ForTick<TController>()
+                where TController : IController
+            {
+                if (typeof(TController) == typeof(IUpdateController)) return _update;
+                if (typeof(TController) == typeof(ILateUpdateController)) return _lateUpdate;
+                return _fixedUpdate;
+            }
+        }
+#endif
         #endregion
 
         #region Extension Points
