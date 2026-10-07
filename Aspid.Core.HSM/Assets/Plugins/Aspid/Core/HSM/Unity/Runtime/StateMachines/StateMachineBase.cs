@@ -132,6 +132,11 @@ namespace Aspid.Core.HSM
 
         #region ChangeState
         /// <inheritdoc />
+        /// <remarks>
+        /// A state constructor, <see cref="IState.Exit"/> or <see cref="IState.Enter"/> that throws stops the change
+        /// midway: exited states stay exited, and the chain ends at the last state reached, or at
+        /// <see cref="EmptyState"/> when none is left. <see cref="OnChangedState"/> still runs, then the exception propagates.
+        /// </remarks>
         /// <exception cref="InvalidOperationException">An async transition is already in progress.</exception>
         public void ChangeState<TState>()
             where TState : IState =>
@@ -160,37 +165,43 @@ namespace Aspid.Core.HSM
         private void ChangeStateCore(Type stateType)
         {
             OnChangingState();
+            // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
+            // which are free to re-enter the factory. A shared buffer would be rewritten underneath us.
+            var newChain = RentTypeChainBuffer();
+            try
             {
-                // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
-                // which are free to re-enter the factory. A shared buffer would be rewritten underneath us.
-                var newChain = RentTypeChainBuffer();
-                try
+                _stateFactory.BuildTypeChain(stateType, newChain);
+                var divergeIndex = FindDivergeIndex(newChain);
+
+                for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
                 {
-                    _stateFactory.BuildTypeChain(stateType, newChain);
-                    var divergeIndex = FindDivergeIndex(newChain);
-
-                    for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
-                    {
-                        ExitState(_currentStates[i]);
-                        _currentStates.RemoveAt(i);
-                    }
-
-                    // Each state is created only once its parent has been entered, so it is resolved from
-                    // its own scope, a child of the parent's.
-                    for (var i = divergeIndex; i < newChain.Count; i++)
-                    {
-                        var state = _stateFactory.CreateState(newChain[i]);
-                        _currentStates.Add(state);
-                        EnterState(state);
-                    }
+                    ExitState(_currentStates[i]);
+                    _currentStates.RemoveAt(i);
                 }
-                finally
+
+                // Each state is created only once its parent has been entered, so it is resolved from
+                // its own scope, a child of the parent's.
+                for (var i = divergeIndex; i < newChain.Count; i++)
                 {
-                    ReturnTypeChainBuffer(newChain);
+                    var state = _stateFactory.CreateState(newChain[i]);
+                    _currentStates.Add(state);
+                    EnterState(state);
                 }
             }
-            OnChangedState();
-            AutoDetachIncompatibleExtensions();
+            finally
+            {
+                ReturnTypeChainBuffer(newChain);
+
+                // A change that throws midway keeps the states it reached: exited states cannot be entered
+                // back. Close it anyway, so OnChangingState/OnChangedState stay paired and extensions are
+                // checked against the leaf that is really active. An empty chain falls back to EmptyState,
+                // as at start, because every later change and tick reads the leaf.
+                if (_currentStates.Count == 0)
+                    _currentStates.Add(new EmptyState());
+
+                OnChangedState();
+                AutoDetachIncompatibleExtensions();
+            }
         }
 
         // The active states are kept for the longest prefix whose types match the new chain from the root.
@@ -212,7 +223,7 @@ namespace Aspid.Core.HSM
         protected virtual void OnChangingState() { }
 
         /// <summary>
-        /// Called after all state exits and enters have completed.
+        /// Called after the exit/enter sequence ends, also when a state in it throws.
         /// </summary>
         protected virtual void OnChangedState() { }
         #endregion

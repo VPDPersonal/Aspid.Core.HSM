@@ -28,8 +28,25 @@ public sealed class ThrowingLeafState : BaseTestState, IChildState<ScopedFamilyS
     public ThrowingLeafState() => throw new InvalidOperationException("constructor failed");
 }
 
+public sealed class ThrowingRootState : BaseTestState
+{
+    public ThrowingRootState() => throw new InvalidOperationException("constructor failed");
+}
+
 [ScopeLifetime(ScopeLifetime.Cached)]
 public sealed class CachedScopedLeafState : BaseTestState, IChildState<ScopedFamilyState>;
+
+[ScopeLifetime(ScopeLifetime.Cached)]
+public sealed class CachedRulesLeafState(FamilyRules rules) : BaseTestState, IChildState<ScopedFamilyState>
+{
+    public FamilyRules Rules { get; } = rules;
+}
+
+[ScopeLifetime(ScopeLifetime.Cached)]
+public sealed class CachedFamilyState : BaseTestState;
+
+[ScopeLifetime(ScopeLifetime.Cached)]
+public sealed class CachedLeafOfCachedFamilyState : BaseTestState, IChildState<CachedFamilyState>;
 
 /// <summary>Pause-like overlay bound to the family: lives in a child of the family's scope.</summary>
 public sealed class FamilyPauseExtension(FamilyRules rules, Func<bool> isFamilyScopeAlive)
@@ -67,7 +84,11 @@ public class ScopedCreationTests
         _rootScope.RegisterState(scope => new ScopedLeafState(scope.Get<FamilyRules>()!));
         _rootScope.RegisterState(scope => new ScopedSiblingLeafState(scope.Get<FamilyRules>()!));
         _rootScope.RegisterState(_ => new ThrowingLeafState());
+        _rootScope.RegisterState(_ => new ThrowingRootState());
         _rootScope.RegisterState(_ => new CachedScopedLeafState());
+        _rootScope.RegisterState(scope => new CachedRulesLeafState(scope.Get<FamilyRules>()!));
+        _rootScope.RegisterState(_ => new CachedFamilyState());
+        _rootScope.RegisterState(_ => new CachedLeafOfCachedFamilyState());
         _rootScope.RegisterState(_ => new UnboundExtension());
         _rootScope.RegisterState(scope => new FamilyPauseExtension(
             scope.Get<FamilyRules>()!,
@@ -156,6 +177,33 @@ public class ScopedCreationTests
     }
 
     [Fact]
+    public void A_throwing_constructor_still_closes_the_change()
+    {
+        var log = new List<string>();
+        var sm = new ChangeHookStateMachine(_factory, log);
+        sm.ChangeState<ScopedLeafState>();
+        log.Clear();
+
+        Assert.Throws<InvalidOperationException>(() => sm.ChangeState<ThrowingLeafState>());
+
+        // OnChangingState/OnChangedState stay paired for subclasses that bracket a change with them.
+        Assert.Equal(new[] { "changing", "changed" }, log);
+    }
+
+    [Fact]
+    public void A_throwing_root_constructor_leaves_an_empty_state_the_machine_can_leave()
+    {
+        _sm.ChangeState<ScopedLeafState>();
+
+        Assert.Throws<InvalidOperationException>(() => _sm.ChangeState<ThrowingRootState>());
+
+        Assert.IsType<EmptyState>(Assert.Single(_sm.CurrentStates));
+
+        _sm.ChangeState<ScopedLeafState>();
+        Assert.IsType<ScopedLeafState>(_sm.CurrentStates[^1]);
+    }
+
+    [Fact]
     public void A_cached_state_is_created_again_from_its_reused_scope()
     {
         _sm.ChangeState<CachedScopedLeafState>();
@@ -168,6 +216,39 @@ public class ScopedCreationTests
         Assert.Equal(2, created.Count);
         Assert.Same(firstScope, created[0].Scope);
         Assert.Same(firstScope, created[1].Scope);
+    }
+
+    [Fact]
+    public void Cached_scope_under_a_transient_parent_is_dropped_with_the_parent()
+    {
+        _sm.ChangeState<CachedRulesLeafState>();
+        var firstLeafScope = Assert.IsType<TestScope>(_factory.GetScope<CachedRulesLeafState>());
+
+        _sm.ChangeState<ScopedOtherRootState>();
+        _sm.ChangeState<CachedRulesLeafState>();
+
+        // The first family scope is disposed, so a leaf created from the cached scope under it would
+        // resolve from a dead container. The cached scope goes with its parent; a new one is created.
+        Assert.True(firstLeafScope.IsDisposed);
+        var leafScope = _factory.GetScope<CachedRulesLeafState>();
+        Assert.NotSame(firstLeafScope, leafScope);
+        Assert.Same(_factory.GetScope<ScopedFamilyState>(), leafScope!.Parent);
+        Assert.Same(_rules, Assert.IsType<CachedRulesLeafState>(_sm.CurrentStates[1]).Rules);
+    }
+
+    [Fact]
+    public void Cached_scope_under_a_cached_parent_is_reused()
+    {
+        _sm.ChangeState<CachedLeafOfCachedFamilyState>();
+        var familyScope = _factory.GetScope<CachedFamilyState>();
+        var leafScope = Assert.IsType<TestScope>(_factory.GetScope<CachedLeafOfCachedFamilyState>());
+
+        _sm.ChangeState<ScopedOtherRootState>();
+        _sm.ChangeState<CachedLeafOfCachedFamilyState>();
+
+        Assert.False(leafScope.IsDisposed);
+        Assert.Same(familyScope, _factory.GetScope<CachedFamilyState>());
+        Assert.Same(leafScope, _factory.GetScope<CachedLeafOfCachedFamilyState>());
     }
 
     [Fact]
@@ -244,5 +325,12 @@ public class ScopedCreationTests
     private sealed class LoggingStateMachine(StateFactory factory, List<string> log) : StateMachineBase(factory)
     {
         protected override void OnEnteredState(IState state) => log.Add("enter " + state.GetType().Name);
+    }
+
+    private sealed class ChangeHookStateMachine(StateFactory factory, List<string> log) : StateMachineBase(factory)
+    {
+        protected override void OnChangingState() => log.Add("changing");
+
+        protected override void OnChangedState() => log.Add("changed");
     }
 }
