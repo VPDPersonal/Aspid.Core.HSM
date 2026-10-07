@@ -124,7 +124,16 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region TransitionTo (async)
-        /// <inheritdoc />
+        /// <summary>
+        /// Asynchronously transitions to <typeparamref name="TTarget"/>, executing any registered
+        /// <see cref="ITransition"/> guards and hooks along the path.
+        /// </summary>
+        /// <typeparam name="TTarget">The target leaf state type.</typeparam>
+        /// <param name="ct">Cancellation token for the transition.</param>
+        /// <exception cref="InvalidOperationException">
+        /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// Or <see cref="StrictTransitions"/> is enabled and no registered transition covers the whole path.
+        /// </exception>
         public UniTask TransitionToAsync<TTarget>(CancellationToken ct = default)
             where TTarget : IState =>
             TransitionToAsync(typeof(TTarget), ct);
@@ -187,7 +196,16 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region TransitionVia (async)
-        /// <inheritdoc />
+        /// <summary>
+        /// Asynchronously executes a specific registered transition by type, transitioning to its
+        /// <see cref="ITransition.TargetState"/> if <see cref="ITransition.CanTransition"/> returns <see langword="true"/>.
+        /// </summary>
+        /// <typeparam name="TTransition">The registered transition type to execute.</typeparam>
+        /// <param name="ct">Cancellation token for the transition.</param>
+        /// <exception cref="InvalidOperationException">
+        /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// Or the transition type is not registered.
+        /// </exception>
         public UniTask TransitionViaAsync<TTransition>(CancellationToken ct = default)
             where TTransition : ITransition =>
             TransitionViaAsync(typeof(TTransition), ct);
