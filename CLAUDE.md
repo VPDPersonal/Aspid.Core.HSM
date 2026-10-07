@@ -55,4 +55,10 @@ When adding a state, implement `IState`, add `IChildState<TParent>` if it has a 
 - `.claude/skills/rebuild-generator` — user-invoked rebuild; copy is automatic via `Directory.Build.targets`.
 - `.claude/skills/gen-snapshot-test` — template for `CSharpSourceGeneratorTest<TGenerator, XUnitVerifier>` tests under `Aspid.Core.HSM.Generators.Tests/`.
 - `.mcp.json` ships `context7` (Roslyn/Unity docs) and `github` (needs `GITHUB_PERSONAL_ACCESS_TOKEN`).
-- `.github/workflows/claude.yml` runs `anthropics/claude-code-action`: one automatic review when a PR opens or leaves draft, and replies to `@claude` comments in PRs and issues. The review rules and the `Verdict: <N> blocking, <M> minor` format live in `.github/claude-review.md`; edit them there. Auth is the `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
+- `.github/workflows/claude.yml` runs `anthropics/claude-code-action` in two jobs:
+  - `review`: one automatic review when a PR opens or leaves draft;
+  - `mention`: replies to `@claude` comments in PRs and issues.
+
+  Edit the review rules and the `Verdict: <N> blocking, <M> minor` format in `.github/claude-review.md`.
+  The jobs need the `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
+- `.claude/asp-pr.md` — PR rules for the `asp-pr` skill: types, scopes and the review loop.
