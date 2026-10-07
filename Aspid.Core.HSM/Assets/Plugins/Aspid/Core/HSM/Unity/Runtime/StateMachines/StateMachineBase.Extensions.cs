@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
@@ -57,29 +58,60 @@ namespace Aspid.Core.HSM
             }
         }
 
+        // A detach, once started, always completes: a throwing callback must not leave the extension attached,
+        // for example under a parent whose scope is disposed next.
         private void DetachExtensionAt(int index)
         {
             var extension = _activeExtensions[index];
             var leafState = _currentStates[^1];
 
-            extension.OnDetached(leafState);
-            extension.GetController<IExitController>()?.OnExit();
-            extension.Exit();
-            _stateFactory.Release(extension);
-            _activeExtensions.RemoveAt(index);
+            try
+            {
+                extension.OnDetached(leafState);
+                extension.GetController<IExitController>()?.OnExit();
+            }
+            finally
+            {
+                try
+                {
+                    extension.Exit();
+                }
+                finally
+                {
+                    _activeExtensions.RemoveAt(index);
+                    if (index <= _tickedExtensionIndex)
+                        _tickedExtensionIndex--;
 
-            if (index <= _tickedExtensionIndex)
-                _tickedExtensionIndex--;
+                    _stateFactory.Release(extension);
+                }
+            }
         }
 
+        // Every bound extension is detached even if one of them throws: none may outlive its parent's scope.
         private void DetachExtensionsBoundTo(IState state)
         {
             var stateType = state.GetType();
+            List<Exception>? failures = null;
             for (int i = _activeExtensions.Count - 1; i >= 0; i--)
             {
-                if (_stateFactory.GetParentType(_activeExtensions[i].GetType()) == stateType)
+                if (_stateFactory.GetParentType(_activeExtensions[i].GetType()) != stateType)
+                    continue;
+
+                try
+                {
                     DetachExtensionAt(i);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= new List<Exception>()).Add(exception);
+                }
             }
+
+            if (failures is { Count: 1 })
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+
+            if (failures is not null)
+                throw new AggregateException(failures);
         }
 
         private int IndexOfActiveState(Type stateType)

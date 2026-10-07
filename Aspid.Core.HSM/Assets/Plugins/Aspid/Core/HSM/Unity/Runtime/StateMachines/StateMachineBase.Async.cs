@@ -134,9 +134,11 @@ namespace Aspid.Core.HSM
                         await EnterStateAsync(state, token);
                     }
                 }
-                catch (Exception exception) when (divergeIndex >= 0)
+                catch (Exception exception)
                 {
-                    await RollBackAsync(divergeIndex, exception);
+                    // A chain that failed to build left the active chain as it was: nothing to roll back,
+                    // but the change is still closed.
+                    await RollBackAsync(divergeIndex >= 0 ? divergeIndex : _currentStates.Count, exception);
                     throw;
                 }
                 finally
@@ -151,9 +153,8 @@ namespace Aspid.Core.HSM
         // Undoes a transition that was cancelled or threw: every state from divergeIndex down — old states not
         // yet exited and new states entered so far, including the one whose enter was interrupted — is exited
         // from the tail and released. What remains are the ancestors the old and new chains share, all fully
-        // entered; a chain left empty falls back to EmptyState. Rollback exits are not cancellable, so no state
-        // is left half-exited. A state whose rollback exit throws is still removed and released, and the
-        // failures are reported together with the cause in an AggregateException.
+        // entered. Rollback exits are not cancellable, so no state is left half-exited. A state whose rollback
+        // exit throws is still removed and released. The change is then closed the same way as a failed sync one.
         private async UniTask RollBackAsync(int divergeIndex, Exception cause)
         {
             List<Exception>? failures = null;
@@ -165,29 +166,20 @@ namespace Aspid.Core.HSM
                 finally { _currentStates.RemoveAt(i); }
             }
 
-            if (_currentStates.Count == 0)
-                _currentStates.Add(new EmptyState());
-
-            AutoDetachIncompatibleExtensions();
-
-            if (failures is not null)
-            {
-                failures.Insert(0, cause);
-                throw new AggregateException(
-                    "A state change failed, and exiting its states during the rollback failed as well.", failures);
-            }
+            CloseFailedChange(cause, failures);
         }
 
-        // An exit, once started, always completes: IState.Exit, OnExitedState and Release run even when the exit
-        // controllers are cancelled or throw. The controllers that did not get to run are not called again.
+        // An exit, once started, always completes: IState.Exit, OnExitedState and Release run even when the bound
+        // extensions' detach, OnExitingState or the exit controllers are cancelled or throw. The callbacks that
+        // did not get to run are not called again.
         private async UniTask ExitStateAsync(IState state, CancellationToken cancellationToken)
         {
-            DetachExtensionsBoundTo(state);
-
-            OnExitingState(state);
             var isExited = false;
             try
             {
+                DetachExtensionsBoundTo(state);
+                OnExitingState(state);
+
                 if (state is IAsyncExitController asyncExit)
                 {
                     // Stop waiting on cancellation even if the callback ignores the token. A callback that awaits
