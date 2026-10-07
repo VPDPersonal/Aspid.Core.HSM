@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **The minimum Unity is now 6000.0.53f1**, the same as in Aspid.FastTools. `package.json` promised Unity 2022.3, but the package was never built or tested there. CI now compiles the package and its sample on Unity 6000.0.
+- `TransitionVia` and the async transition entry points no longer dispatch through `MethodInfo.Invoke`; the reflection-based generic dispatch was replaced by the new `Type`-based overloads.
+- `ChangeState` now rejects a call made during an async transition before consulting `IsStateEnabled`, so an in-flight async transition throws regardless of the target. Previously a target that `IsStateEnabled` refused returned silently instead.
+- README no longer claims UniTask is "pulled in automatically as a package dependency" — UPM does not resolve git dependencies transitively, so it never was. Installation now documents UniTask as an explicit first step with a pinned git URL.
+- README no longer documents the `upm` branch and stable install URL as if they existed; they appear when the first non-prerelease version ships.
+- A superseded async transition no longer waits for an async enter/exit callback that ignores its `CancellationToken`. The callback keeps running on its own, and the superseding transition starts at once.
+- `[ControllerGroup]` names each controller's profiler marker with the controller's full type name, generic arguments included (`Sample.CountdownController<Sample.DrivingState>`), in the same format as the state markers. It used the simple name, so every closing of a generic controller fell under a single marker.
 
 ### Fixed
 
@@ -35,15 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`TransitionTo` and `TransitionVia` checked the guards twice**, the second time after `OnBeforeTransition` had run. A guard that changed its answer there skipped the state change but still called `OnAfterTransition`. The guards now run once, before `OnBeforeTransition`. `TransitionToAsync` and `TransitionViaAsync` check the edge guard and resolve the registered transition after the superseded transition has unwound, against the leaf that it left.
 - **`ChangeState` from an update controller corrupted the tick.** `Update`, `LateUpdate` and `FixedUpdate` walked the active chain with `foreach`, so a controller that changed state threw "Collection was modified" and left the rest of the chain unticked; attaching or detaching an extension from a tick did the same to the extension list. A synchronous `ChangeState` / `TransitionTo` / `TransitionVia` requested during a tick is now queued and applied once every state and extension has been ticked, in the order the requests were made, and before the next tick runs. The tick walks both lists by index, so a state or extension removed mid-tick is skipped instead of throwing. Requests made before a controller throws are dropped with the tick.
 - **The `Game Loop` sample never reached the published package.** `package.json` advertised `Samples~/GameLoop`, but a `*~` pattern in a contributor's global gitignore matched the `Samples~` directory itself, so it was absent from every commit and from the `git subtree split` the release workflow publishes. The repository `.gitignore` now re-includes `~`-suffixed directories.
-
-### Changed
-
-- `TransitionVia` and the async transition entry points no longer dispatch through `MethodInfo.Invoke`; the reflection-based generic dispatch was replaced by the new `Type`-based overloads.
-- `ChangeState` now rejects a call made during an async transition before consulting `IsStateEnabled`, so an in-flight async transition throws regardless of the target. Previously a target that `IsStateEnabled` refused returned silently instead.
-- README no longer claims UniTask is "pulled in automatically as a package dependency" — UPM does not resolve git dependencies transitively, so it never was. Installation now documents UniTask as an explicit first step with a pinned git URL.
-- README no longer documents the `upm` branch and stable install URL as if they existed; they appear when the first non-prerelease version ships.
-- A superseded async transition no longer waits for an async enter/exit callback that ignores its `CancellationToken`. The callback keeps running on its own, and the superseding transition starts at once.
-- `[ControllerGroup]` names each controller's profiler marker with the controller's full type name, generic arguments included (`Sample.CountdownController<Sample.DrivingState>`), in the same format as the state markers. It used the simple name, so every closing of a generic controller fell under a single marker.
 
 ## [0.0.1-alpha.1] — 2026-07-08
 
