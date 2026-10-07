@@ -7,6 +7,9 @@
         <IsPackable>false</IsPackable>
 
         <RootNamespace>Aspid.Core.HSM.Generators.Tests</RootNamespace>
+
+        <!-- Compiles the machine's profiler markers against the stub in Profiling/ProfilerMarker.cs. -->
+        <DefineConstants>$(DefineConstants);ENABLE_PROFILER</DefineConstants>
     </PropertyGroup>
 
     <ItemGroup>
