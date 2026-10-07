@@ -20,7 +20,11 @@ dotnet build Aspid.Core.HSM.Generators.slnx
 dotnet build Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators -c Release
 dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core.HSM.Generators.Tests.csproj
 dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core.HSM.Generators.Tests.csproj --filter FullyQualifiedName~StateMachineBaseTests
+dotnet build Aspid.Core.HSM.Generators/Aspid.Core.HSM.Runtime
+node ../scripts/check-package.mjs
 ```
+
+The Tests, Sample and Runtime projects compile the package sources from `Aspid.Core.HSM.Generators/RuntimeSources.props` by glob: a new runtime file needs no csproj edit. `Aspid.Core.HSM.Runtime` is a compile gate only: it builds the runtime as C# 9 against .NET Standard 2.1, as Unity does, so a newer language feature fails there even when the tests pass. `scripts/check-package.mjs` checks the package for missing sample folders, missing or orphan `.meta` files and a README badge that disagrees with `package.json`.
 
 After modifying the generator, run the Release build above — the `CopyGeneratorToUnityPackage` target in `Aspid.Core.HSM.Generators/.../Directory.Build.targets` drops the merged DLL into `Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/`. Only a Release build copies it: `dotnet test` and other Debug builds never touch the shipped DLL. The build is deterministic, so the same sources give the same bytes on any machine with the SDK from `global.json`. Do not copy by hand and do not add a hook for this. The Unity project itself is built/run from the Unity Editor, not the CLI.
 
@@ -52,9 +56,10 @@ When adding a state, implement `IState`, add `IChildState<TParent>` if it has a 
 
 ## Claude Code setup
 
+- `.claude/settings.json` allows `dotnet test`, `dotnet build`, `node scripts/check-*` and read-only `gh pr`/`gh run` commands without a prompt.
 - `.claude/settings.json` blocks `Edit`/`Write` on `*.meta` (Unity-managed) and `Aspid.Core.HSM.Generators.dll` (build artifact) via `PreToolUse`. Don't try to bypass — fix the source instead. The hook reads `file_path` with `sed`, not a JSON parser: it matches only the path suffix, and `$p` is not the decoded path.
 - `.claude/skills/rebuild-generator` — user-invoked rebuild; copy is automatic via `Directory.Build.targets`.
-- `.claude/skills/gen-snapshot-test` — template for `CSharpSourceGeneratorTest<TGenerator, XUnitVerifier>` tests under `Aspid.Core.HSM.Generators.Tests/`.
+- `.claude/skills/gen-snapshot-test` — template for generator tests under `Aspid.Core.HSM.Generators.Tests/GeneratorTests/` that run the generator with `CSharpGeneratorDriver`.
 - `.claude/skills/asp-branch`, `asp-commit`, `asp-pr` — branch names, commits and pull requests. Use them for every commit and PR, so that all contributors follow one format. `asp-pr` reads repo-specific rules (scopes, labels, review loop) from `.claude/asp-pr.md` when that file exists. `asp-commit` and `asp-pr` run `sh` scripts and need `git` and an authenticated `gh`. On Windows, install Git for Windows: Claude Code then runs them in Git Bash.
 - `.claude/skills/asp-xmldoc` — XML docs (`///`) conventions for public C# API. It loads before you write a `///` comment.
 - `.mcp.json` ships `context7` (Roslyn/Unity docs) and `github` (needs `GITHUB_PERSONAL_ACCESS_TOKEN`).
@@ -65,3 +70,6 @@ When adding a state, implement `IState`, add `IChildState<TParent>` if it has a 
   Edit the review rules and the `Verdict: <N> blocking, <M> minor` format in `.github/claude-review.md`.
   The jobs need the `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
 - `.claude/asp-pr.md` — PR rules for the `asp-pr` skill: types, scopes and the review loop.
+- `.github/workflows/tests.yml` runs on every PR and push to `main`: the .NET tests, the C# 9 runtime build, `scripts/check-package.mjs`, `scripts/check-skills.mjs`, and a Unity job that compiles the package and its sample on the minimum Unity (6000.0.53f1) in a throwaway project (`scripts/make-unity-test-project.sh`) and runs the EditMode tests. `Unity plan` starts it only when the package or its setup changed; the `Unity` job is the one check to require. GameCI activates Unity with the `UNITY_EMAIL` and `UNITY_PASSWORD` secrets; without them the Unity job is skipped on PRs and fails a release. Do not add a `UNITY_LICENSE` secret: the `.ulf` is bound to the Hub machine and breaks the activation on 6000.0.53f1.
+- `.github/workflows/pr-checks.yml` checks the PR title against the types and scopes in `.claude/asp-pr.md` and sets the `type:*`, `area:*` and `breaking-change` labels. Keep the two lists in sync.
+- `.github/dependabot.yml` updates GitHub Actions weekly. NuGet stays manual: Roslyn versions are pinned to what Unity ships.
