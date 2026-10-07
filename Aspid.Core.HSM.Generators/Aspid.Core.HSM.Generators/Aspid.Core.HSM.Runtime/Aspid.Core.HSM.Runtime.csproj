@@ -8,6 +8,8 @@
         <LangVersion>9</LangVersion>
         <IsPackable>false</IsPackable>
         <RootNamespace>Aspid.Core.HSM</RootNamespace>
+        <!-- The Editor defines ENABLE_PROFILER, so the profiling branch is compiled too, against Stubs/. -->
+        <DefineConstants>$(DefineConstants);ENABLE_PROFILER</DefineConstants>
     </PropertyGroup>
 
     <Import Project="..\..\RuntimeSources.props" />
