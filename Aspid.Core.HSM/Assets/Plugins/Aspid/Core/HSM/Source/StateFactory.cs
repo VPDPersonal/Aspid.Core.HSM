@@ -13,7 +13,6 @@ namespace Aspid.Core.HSM
     public abstract class StateFactory
     {
         private readonly HashSet<Type> _initializedStates = new();
-        private readonly List<IState> _chainBuffer = new(capacity: 4);
         private readonly List<Type> _typeChainBuffer = new(capacity: 4);
         private readonly List<IState?> _probedStatesBuffer = new(capacity: 4);
         private readonly Dictionary<Type, Type?> _parentTypeCache = new();
@@ -36,15 +35,48 @@ namespace Aspid.Core.HSM
         /// </remarks>
         /// <typeparam name="TState">The target leaf state type.</typeparam>
         /// <param name="activeStates">The currently active state chain for reuse comparison.</param>
-        /// <returns>The new state chain ordered root-to-leaf.</returns>
+        /// <returns>
+        /// A newly allocated list holding the state chain ordered root-to-leaf. The factory keeps no
+        /// reference to it, so the caller may hold it across further factory calls. Use
+        /// <see cref="CreateState(Type, IReadOnlyList{IState}, List{IState})"/> to fill a pooled list instead.
+        /// </returns>
         public IReadOnlyList<IState> CreateState<TState>(IReadOnlyList<IState> activeStates)
             where TState : IState
         {
-            _chainBuffer.Clear();
+            var chain = new List<IState>(capacity: 4);
+            CreateState(typeof(TState), activeStates, chain);
+            return chain;
+        }
+
+        /// <inheritdoc cref="CreateState{TState}(IReadOnlyList{IState})"/>
+        /// <param name="leafType">The target leaf state type.</param>
+        /// <param name="activeStates">The currently active state chain for reuse comparison.</param>
+        public IReadOnlyList<IState> CreateState(Type leafType, IReadOnlyList<IState> activeStates)
+        {
+            var chain = new List<IState>(capacity: 4);
+            CreateState(leafType, activeStates, chain);
+            return chain;
+        }
+
+        /// <summary>
+        /// Allocation-free variant of <see cref="CreateState{TState}(IReadOnlyList{IState})"/> that clears
+        /// <paramref name="destination"/> and fills it with the root-to-leaf chain.
+        /// </summary>
+        /// <remarks>
+        /// The factory holds no reference to <paramref name="destination"/> beyond this call, so a caller that
+        /// re-enters the factory while still iterating a previously filled list is safe as long as it passes a
+        /// different list each time. <c>StateMachineBase</c> rents one per in-flight transition for exactly this reason.
+        /// </remarks>
+        /// <param name="leafType">The target leaf state type.</param>
+        /// <param name="activeStates">The currently active state chain for reuse comparison.</param>
+        /// <param name="destination">The list to fill. Cleared before use.</param>
+        public void CreateState(Type leafType, IReadOnlyList<IState> activeStates, List<IState> destination)
+        {
+            destination.Clear();
             _typeChainBuffer.Clear();
             _probedStatesBuffer.Clear();
 
-            BuildTypeChain(typeof(TState));
+            BuildTypeChain(leafType);
 
             var sharedCount = 0;
             var maxShared = Math.Min(activeStates.Count, _typeChainBuffer.Count);
@@ -58,11 +90,10 @@ namespace Aspid.Core.HSM
                     ? activeStates[i]
                     : _probedStatesBuffer[i] ?? CreateStateInternal(_typeChainBuffer[i]);
 
-                _chainBuffer.Add(state);
+                destination.Add(state);
             }
 
             _probedStatesBuffer.Clear();
-            return _chainBuffer;
         }
 
         private void BuildTypeChain(Type type)
