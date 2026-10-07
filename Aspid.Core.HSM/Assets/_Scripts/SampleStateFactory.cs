@@ -7,7 +7,7 @@ namespace _Scripts
 {
     public class SampleStateFactory : StateFactory<IState>
     {
-        protected override IState CreateStateInternal(Type type)
+        protected override IState CreateStateInternal(Type type, IStateScope scope)
         {
             if (type == typeof(RootState)) return new RootState();
             if (type == typeof(MainMenuState)) return new MainMenuState();
