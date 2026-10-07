@@ -155,3 +155,7 @@ dotnet_naming_rule.type_parameters_are_t_prefixed.severity = warning
 #### Roslyn solution — file-scoped namespaces (Unity side stays block-scoped).
 [Aspid.Core.HSM.Generators/**.cs]
 csharp_style_namespace_declarations = file_scoped:warning
+
+#### The C# 9 runtime check compiles as Unity does: C# 9 has no file-scoped namespaces.
+[Aspid.Core.HSM.Generators/**/Aspid.Core.HSM.Runtime/**.cs]
+csharp_style_namespace_declarations = block_scoped:warning

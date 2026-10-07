@@ -34,7 +34,7 @@ jobs:
               // repository
               'readme', 'changelog', 'release', 'github', 'claude', 'deps',
             ];
-            // A file can add several areas.
+            // A file can add several areas. The type, area and breaking-change labels follow the PR: CI adds and removes them.
             const PKG = 'Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/';
             const AREAS = [
               [PKG + 'Source/', 'area: runtime'],
@@ -78,11 +78,15 @@ jobs:
               current.filter(l => l.startsWith('type: ') && l !== TYPES[m[1]]).forEach(l => remove.add(l));
             }
             if (m?.[3]) add.add('breaking-change');
+            else if (current.includes('breaking-change')) remove.add('breaking-change');
 
             const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: pr.number });
             for (const { filename } of files)
               for (const [prefix, label] of AREAS)
                 if (filename.startsWith(prefix)) add.add(label);
+
+            // An area whose files left the PR loses its label.
+            current.filter(l => l.startsWith('area: ') && !add.has(l)).forEach(l => remove.add(l));
 
             const toAdd = [...add].filter(l => !current.includes(l));
             if (toAdd.length) await github.rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: toAdd });
