@@ -1,19 +1,18 @@
-﻿using _Scripts.Controllers;
 using Aspid.Core.HSM;
+using UnityEngine;
 
-namespace _Scripts
+namespace _Scripts.States
 {
-	[ParentState(null)]
-	public class RootState : IState
-	{
-		public void Enter()
-		{
-			var testController = new TestController(stateName: nameof(RootState));
-		}
+    public class RootState : IState
+    {
+        public void Enter()
+        {
+            Debug.Log("[HSM] RootState.Enter");
+        }
 
-		public void Exit()
-		{
-			throw new System.NotImplementedException();
-		}
-	}
+        public void Exit()
+        {
+            Debug.Log("[HSM] RootState.Exit");
+        }
+    }
 }

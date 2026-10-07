@@ -1,0 +1,2 @@
+# Shell scripts must keep LF: Git for Windows checks out CRLF by default, and sh fails on it.
+*.sh text eol=lf

@@ -45,7 +45,7 @@ Controller → ControllerGroup → State
 
 **ControllerGroup** — Composite pattern. Itself an `IController`, aggregates child controllers and/or other ControllerGroups. `[ControllerGroup]` generator implements all controller interfaces from children, delegating calls. Can be reused across states.
 
-**State** — ControllerGroup with `Enter()`/`Exit()`, parent hierarchy via `[ParentState]`, unit of DI Scope. When parent state has children, parent does NOT exit — its controllers keep running.
+**State** — ControllerGroup with `Enter()`/`Exit()`, parent hierarchy via `IChildState<TParent>`, unit of DI Scope. When parent state has children, parent does NOT exit — its controllers keep running.
 
 ### Transition pipeline
 
@@ -131,40 +131,33 @@ Override to implement config-driven controller/state disabling or transition rep
 
 ## Source generators
 
-Four incremental generators in `Aspid.Core.HSM.Generators/`:
+Three incremental generators live in `Aspid.Core.HSM.Generators/`, each triggered via `ForAttributeWithMetadataName` and requiring the target class to be `partial`:
 
-| Generator | Trigger | Emits |
-|---|---|---|
-| `ChildStateGenerator` | `[ParentState]` | `IChildState.ParentState` property |
-| `ControllersGroupGenerator` | `[ControllerGroup]` | Controller aggregation, profiler markers, async dispatch |
-| `TransitionGenerator` | `[Transition]` | `ITransition.SourceState`/`TargetState` properties |
-| `ExtensionStateGenerator` | `[ExtensionFor]` | `IExtensionState.CanAttachTo()` pattern matching |
+- `ControllersGroupGenerator` (triggered by `[ControllerGroup]`) — emits the controller-aggregation plumbing (e.g. `AddControllers(...)` used in samples) so a single class can dispatch to multiple inner controllers. Interacts with `[ReverseExecute]`, `[AsyncOf]`, and `[AsyncMode]` (`AsyncExecutionMode` Sequential/Parallel) on group methods.
+- `TransitionGenerator` (triggered by `[Transition(typeof(Source), typeof(Target))]`) — emits `ITransition.SourceState`/`TargetState`. This is the attribute-based alternative to implementing `ITransition<TSource, TTarget>` by hand (that generic interface supplies the same members via DIM). A non-`partial` transition class is simply skipped, so it must use the generic interface instead.
+- `ExtensionStateGenerator` (triggered by `[ExtensionFor(typeof(A), typeof(B), …)]`) — emits `IExtensionState.CanAttachTo` as `hostState is A or B`. A non-`partial` extension implements `CanAttachTo` manually instead.
+
+There is **no** `ChildStateGenerator` and no `[ParentState]` attribute — the parent relationship is expressed purely by the `IChildState<TParent>` interface (see HSM architecture above).
 
 Each follows the pattern: `Data/` (record) → `Factories/` (extract from SemanticModel) → `Bodies/` (emit source). `Descriptions/HsmClasses.cs` centralizes type names — update when renaming.
-
-### Compile-time diagnostics
-
-| ID | Severity | Description |
-|---|---|---|
-| HSM001 | Error | Cyclic state hierarchy detected in `[ParentState]` chain |
 
 ## File layout
 
 ```
 Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/
 ├── Source/                              # Core (no Unity deps)
-│   ├── IController.cs                   # Marker interface
-│   ├── IState.cs                        # Enter/Exit
-│   ├── IChildState.cs                   # ParentState property
+│   ├── Controllers/IController.cs       # Marker interface
+│   ├── States/
+│   │   ├── IState.cs                    # Enter/Exit
+│   │   ├── IChildState.cs               # IChildState<TParent> → ParentState
+│   │   ├── IExtensionState.cs           # Dynamic mixin states
+│   │   ├── IStateScope.cs               # DI scope abstraction
+│   │   └── EmptyState.cs                # Initial state
 │   ├── IStateMachine.cs                 # Public API
 │   ├── ITransition.cs                   # Transition pipeline
-│   ├── IExtensionState.cs               # Dynamic mixin states
-│   ├── IStateScope.cs                   # DI scope abstraction
 │   ├── ScopeLifetime.cs                 # Transient/Cached enum
-│   ├── EmptyState.cs                    # Initial state
 │   ├── StateFactory.cs                  # State + scope lifecycle
 │   ├── Generation/                      # Attributes for generators
-│   │   ├── ParentStateAttribute.cs
 │   │   ├── ControllerGroupAttribute.cs
 │   │   ├── TransitionAttribute.cs
 │   │   ├── ExtensionForAttribute.cs
@@ -178,7 +171,7 @@ Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/
 │       ├── StateExtensions.cs           # GetController<T>()
 │       └── StateMachineExtensions.cs    # GetParentState/GetChildState
 └── Unity/Runtime/
-    ├── Controllers/                     # Controller interfaces (9 files)
+    ├── Controllers/                     # Controller interfaces (8 files)
     └── StateMachines/
         ├── StateMachineBase.cs          # Core: ChangeState, Update, Enter/Exit
         ├── StateMachineBase.Async.cs    # ChangeStateAsync
@@ -195,8 +188,7 @@ Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/
 
 ```csharp
 [ControllerGroup]
-[ParentState(typeof(GameplayState))]  // omit for root state
-public partial class NewState : IState
+public partial class NewState : IState, IChildState<GameplayState>  // root state: IState only
 {
     public NewState()
     {
@@ -205,7 +197,7 @@ public partial class NewState : IState
 }
 ```
 
-Register in factory: `factory.RegisterState<NewState>();`
+When adding a state, implement `IState`, add `IChildState<TParent>` if it has a parent (root states implement `IState` only), and add controller interfaces (`IUpdateController`, `IEnterController`, …) or a `[ControllerGroup] partial class` for multi-controller dispatch. No generator or `partial` is needed for the parent relationship itself. See `Aspid.Core.HSM/Assets/_Scripts/States/RootState.cs` and `SinglePlayerState.cs` for the canonical pattern, `Aspid.Core.HSM/Assets/_Scripts/Transitions/` for `[Transition]`/`ITransition<,>`, `Aspid.Core.HSM/Assets/_Scripts/Extensions/` for `[ExtensionFor]`, and `Aspid.Core.HSM.Generators.Sample/Sample/` for `[ControllerGroup]` usage.
 
 ### Adding a new controller
 
@@ -247,11 +239,20 @@ public partial class MiniGameExtension : IExtensionState
 
 ## Claude Code setup
 
-- `.claude/settings.json` blocks `Edit`/`Write` on `*.meta` and `Aspid.Core.HSM.Generators.dll` via hooks.
-- `.claude/skills/rebuild-generator` — rebuilds generator DLL.
-- `.claude/skills/gen-snapshot-test` — template for generator snapshot tests.
+- `.claude/settings.json` blocks `Edit`/`Write` on `*.meta` (Unity-managed) and `Aspid.Core.HSM.Generators.dll` (build artifact) via `PreToolUse`. Don't try to bypass — fix the source instead. The hook reads `file_path` with `sed`, not a JSON parser: it matches only the path suffix, and `$p` is not the decoded path.
+- `.claude/skills/rebuild-generator` — user-invoked rebuild; copy is automatic via `Directory.Build.targets`.
+- `.claude/skills/gen-snapshot-test` — template for `CSharpSourceGeneratorTest<TGenerator, XUnitVerifier>` tests under `Aspid.Core.HSM.Generators.Tests/`.
+- `.claude/skills/asp-branch`, `asp-commit`, `asp-pr` — branch names, commits and pull requests. Use them for every commit and PR, so that all contributors follow one format. `asp-pr` reads repo-specific rules (scopes, labels, review loop) from `.claude/asp-pr.md` when that file exists. `asp-commit` and `asp-pr` run `sh` scripts and need `git` and an authenticated `gh`. On Windows, install Git for Windows: Claude Code then runs them in Git Bash.
+- `.claude/skills/asp-xmldoc` — XML docs (`///`) conventions for public C# API. It loads before you write a `///` comment.
 - `.claude/skills/create-state` — scaffold a new HSM state.
 - `.claude/skills/create-controller` — scaffold a new controller.
 - `.claude/skills/create-transition` — scaffold a new transition.
 - `.claude/skills/create-extension` — scaffold a new extension state.
-- `.mcp.json` — `context7` (Roslyn/Unity docs), `github`, `hsm-analyzer` (HSM tree introspection).
+- `.mcp.json` ships `context7` (Roslyn/Unity docs), `github` (needs `GITHUB_PERSONAL_ACCESS_TOKEN`) and `hsm-analyzer` (HSM tree introspection).
+- `.github/workflows/claude.yml` runs `anthropics/claude-code-action` in two jobs:
+  - `review`: one automatic review when a PR opens or leaves draft;
+  - `mention`: replies to `@claude` comments in PRs and issues.
+
+  Edit the review rules and the `Verdict: <N> blocking, <M> minor` format in `.github/claude-review.md`.
+  The jobs need the `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
+- `.claude/asp-pr.md` — PR rules for the `asp-pr` skill: types, scopes and the review loop.
