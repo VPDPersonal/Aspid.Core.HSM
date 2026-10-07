@@ -134,6 +134,8 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         public async UniTask TransitionToAsync(Type targetType, CancellationToken ct = default)
         {
+            ThrowIfSyncChangeInProgress();
+
             if (!IsStateEnabled(targetType))
                 return;
 
@@ -195,6 +197,8 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         public async UniTask TransitionViaAsync(Type transitionType, CancellationToken ct = default)
         {
+            ThrowIfSyncChangeInProgress();
+
             var transition = FindTransitionByType(transitionType);
 
             if (!IsStateEnabled(transition.TargetState))
@@ -347,6 +351,16 @@ namespace Aspid.Core.HSM
             if (_activeTransitionCts is not null)
                 throw new InvalidOperationException(
                     "An asynchronous transition is in progress. Use the async transition methods or wait for it to complete.");
+        }
+
+        // The mirror of ThrowIfAsyncTransitionInProgress. An async change started from a synchronous Enter/OnEnter
+        // would run inside the synchronous change and rewrite the chain that change is still iterating.
+        private void ThrowIfSyncChangeInProgress()
+        {
+            if (_isChangingState)
+                throw new InvalidOperationException(
+                    "A synchronous state change is in progress. Call ChangeState, TransitionTo or TransitionVia instead: " +
+                    "they queue the request and apply it once the running change completes.");
         }
         #endregion
     }

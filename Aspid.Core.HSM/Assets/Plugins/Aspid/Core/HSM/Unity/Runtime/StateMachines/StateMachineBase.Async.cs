@@ -32,6 +32,9 @@ namespace Aspid.Core.HSM
         /// </remarks>
         /// <typeparam name="TState">The target leaf state type.</typeparam>
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
+        /// <exception cref="InvalidOperationException">
+        /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// </exception>
         public UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState =>
             ChangeStateAsync(typeof(TState), cancellationToken);
@@ -41,6 +44,8 @@ namespace Aspid.Core.HSM
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
         public async UniTask ChangeStateAsync(Type stateType, CancellationToken cancellationToken = default)
         {
+            ThrowIfSyncChangeInProgress();
+
             if (!IsStateEnabled(stateType))
                 return;
 
