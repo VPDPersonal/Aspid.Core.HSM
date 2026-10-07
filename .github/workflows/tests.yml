@@ -21,9 +21,10 @@ permissions:
   contents: read
 
 # Under workflow_call, github.workflow is the caller's name, so a release never cancels the run on main.
-# Only PR runs cancel each other; every commit on main keeps its result.
+# PR runs share one group per PR and cancel each other. Every other run gets its own group per commit:
+# GitHub replaces a pending run in a shared group even without cancel-in-progress, so main keeps every result.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

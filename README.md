@@ -41,6 +41,10 @@ https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview/0.0.1-alpha.1
 
 > **Note.** There is no stable release yet, so the `upm` branch does not exist. The [Release workflow](.github/workflows/release.yml) creates it — along with `upm/<version>` tags and a `#upm` install URL — when the first non-prerelease version ships.
 
+### Game Loop sample
+
+Import it from the package's **Samples** tab. Its scripts read input through the [Input System](https://docs.unity3d.com/Packages/com.unity.inputsystem@latest), so install `com.unity.inputsystem` from the Unity Registry first, or the sample does not compile.
+
 ## License
 
 [MIT](LICENSE).
