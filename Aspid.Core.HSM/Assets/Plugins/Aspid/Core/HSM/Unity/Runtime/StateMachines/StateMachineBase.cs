@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 #if ENABLE_PROFILER
+using System.Text;
 using Unity.Profiling;
 #endif
 
@@ -404,18 +405,54 @@ namespace Aspid.Core.HSM
         }
 
         // Full name with readable generic arguments, so two closings of one generic state get separate markers.
+        // Nested types are joined with '.', and each segment keeps its own arguments: NS.Outer<System.Int32>.Inner.
+        // ControllerGroupBody names controller markers in the same format, so one type reads the same everywhere.
         private static string GetMarkerTypeName(Type type)
         {
-            if (!type.IsGenericType)
-                return type.FullName ?? type.Name;
+            if (type.IsArray)
+                return $"{GetMarkerTypeName(type.GetElementType()!)}[{new string(',', type.GetArrayRank() - 1)}]";
 
-            var definitionName = type.GetGenericTypeDefinition().FullName ?? type.Name;
-            var tickIndex = definitionName.IndexOf('`');
-            if (tickIndex >= 0)
-                definitionName = definitionName.Substring(0, tickIndex);
+            if (type.IsGenericParameter)
+                return type.Name;
 
-            var arguments = Array.ConvertAll(type.GetGenericArguments(), GetMarkerTypeName);
-            return $"{definitionName}<{string.Join(", ", arguments)}>";
+            var builder = new StringBuilder();
+            if (!string.IsNullOrEmpty(type.Namespace))
+                builder.Append(type.Namespace).Append('.');
+
+            AppendMarkerTypeSegment(builder, type, type.GetGenericArguments());
+            return builder.ToString();
+        }
+
+        // A nested type lists the arguments of its declaring types too. Each segment takes only the arguments
+        // its own arity adds, so Outer<A>.Inner<B> does not collapse into Outer<A, B>. Returns the arguments used.
+        private static int AppendMarkerTypeSegment(StringBuilder builder, Type segment, Type[] arguments)
+        {
+            var start = 0;
+            if (segment.DeclaringType is { } declaringType)
+            {
+                start = AppendMarkerTypeSegment(builder, declaringType, arguments);
+                builder.Append('.');
+            }
+
+            var name = segment.Name;
+            var tickIndex = name.IndexOf('`');
+            builder.Append(name, 0, tickIndex >= 0 ? tickIndex : name.Length);
+
+            var end = segment.GetGenericArguments().Length;
+            if (end > start)
+            {
+                builder.Append('<');
+                for (var i = start; i < end; i++)
+                {
+                    if (i > start)
+                        builder.Append(", ");
+
+                    builder.Append(GetMarkerTypeName(arguments[i]));
+                }
+                builder.Append('>');
+            }
+
+            return end;
         }
 
         private sealed class StateMarkers

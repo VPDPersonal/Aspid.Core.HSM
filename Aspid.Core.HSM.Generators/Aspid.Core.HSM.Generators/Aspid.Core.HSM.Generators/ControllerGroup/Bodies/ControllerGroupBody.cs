@@ -11,6 +11,14 @@ namespace Aspid.Core.HSM.Generators.ControllerGroup.Bodies;
 
 public static class ControllerGroupBody
 {
+    // Matches StateMachineBase.GetMarkerTypeName at runtime: full CLR names (System.Int32, not int), nested
+    // types joined with '.', and Nullable<T> spelled out. One type then has one marker name in a profile.
+    private static readonly SymbolDisplayFormat MarkerTypeFormat = new(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.ExpandNullable);
+
     public static void Generate(
         in ControllerGroupData data,
         NamespaceText? namespaceText,
@@ -115,7 +123,7 @@ public static class ControllerGroupBody
                 var markerName = GetMarkerNameForController(i);
                 // Full name with generic arguments: CountdownController<ClassicDrivingState> and
                 // CountdownController<NetworkDrivingState> must not collapse into one profiler entry.
-                var controllerName = data.Controllers[i].Symbol.ToDisplayString();
+                var controllerName = data.Controllers[i].Symbol.ToDisplayString(MarkerTypeFormat);
 
                 code.AppendMultiline(
                     $"""

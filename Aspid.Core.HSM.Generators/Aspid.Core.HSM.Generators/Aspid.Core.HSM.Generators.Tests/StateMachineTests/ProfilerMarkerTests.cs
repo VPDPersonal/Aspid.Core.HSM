@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Unity.Profiling;
 using Xunit;
@@ -7,6 +8,19 @@ namespace Aspid.Core.HSM.Generators.Tests.StateMachineTests;
 public sealed class ProfiledGenericState<T> : BaseTestState, IUpdateController
 {
     public void Update(float deltaTime) { }
+}
+
+public static class ProfiledOuter<T>
+{
+    public sealed class Inner : BaseTestState, IUpdateController
+    {
+        public void Update(float deltaTime) { }
+    }
+
+    public sealed class Generic<TInner> : BaseTestState, IUpdateController
+    {
+        public void Update(float deltaTime) { }
+    }
 }
 
 public class ProfilerMarkerTests
@@ -26,6 +40,8 @@ public class ProfilerMarkerTests
         _factory.RegisterState<SimpleTestState>();
         _factory.RegisterState<UpdateableTestState>();
         _factory.RegisterState<ProfiledGenericState<int>>();
+        _factory.RegisterState<ProfiledOuter<int>.Inner>();
+        _factory.RegisterState<ProfiledOuter<int>.Generic<string>>();
         _sm = new TestableStateMachine(_factory);
     }
 
@@ -75,6 +91,45 @@ public class ProfilerMarkerTests
         Assert.Contains(
             "begin HSM.Update Aspid.Core.HSM.Generators.Tests.StateMachineTests.ProfiledGenericState<System.Int32>",
             ProfilerMarker.Samples);
+    }
+
+    [Theory]
+    [InlineData(typeof(ProfiledOuter<int>.Inner), "ProfiledOuter<System.Int32>.Inner")]
+    [InlineData(typeof(ProfiledOuter<int>.Generic<string>), "ProfiledOuter<System.Int32>.Generic<System.String>")]
+    public void Nested_generic_state_marker_keeps_each_segment(Type stateType, string expectedName)
+    {
+        _sm.ChangeState(stateType);
+        ProfilerMarker.Samples.Clear();
+
+        _sm.CallUpdate(0.016f);
+
+        // The nested name must not collapse into the outer type's name, and arguments stay on their segment.
+        Assert.Equal(
+            new[] { "begin HSM.Update Aspid.Core.HSM.Generators.Tests.StateMachineTests." + expectedName,
+                    "end HSM.Update Aspid.Core.HSM.Generators.Tests.StateMachineTests." + expectedName },
+            ProfilerMarker.Samples);
+    }
+
+    [Fact]
+    public void Async_change_without_async_controllers_samples_like_a_sync_change()
+    {
+        _sm.ChangeState<ChildTestState>();
+        var syncEnter = ProfilerMarker.Samples.ToArray();
+        ProfilerMarker.Samples.Clear();
+        _sm.ChangeState<SimpleTestState>();
+        var syncExit = ProfilerMarker.Samples.Where(s => s.Contains("HSM.Exit")).ToArray();
+
+        var asyncSm = new TestableStateMachine(_factory);
+        ProfilerMarker.Samples.Clear();
+        asyncSm.ChangeStateAsync<ChildTestState>().GetAwaiter().GetResult();
+        var asyncEnter = ProfilerMarker.Samples.ToArray();
+        ProfilerMarker.Samples.Clear();
+        asyncSm.ChangeStateAsync<SimpleTestState>().GetAwaiter().GetResult();
+        var asyncExit = ProfilerMarker.Samples.Where(s => s.Contains("HSM.Exit")).ToArray();
+
+        // One sample per state either way, so the Profiler call count does not depend on the entry point.
+        Assert.Equal(syncEnter, asyncEnter);
+        Assert.Equal(syncExit, asyncExit);
     }
 
     [Fact]

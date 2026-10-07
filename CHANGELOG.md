@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `StateMachineBase.StrictTransitions` — opt-in strict mode. When enabled, `TransitionTo` / `TransitionToAsync` require a registered `ITransition` covering **every** step of the path and throw `InvalidOperationException` naming the missing edge instead of transitioning anyway. `ChangeState` stays outside the check as the deliberate escape hatch.
 - `MonoStateMachine` now exposes `IsStateEnabled`, `IsControllerEnabled`, `IsTransitionEnabled` and `StrictTransitions` as `protected virtual` members and forwards them to the internal core. Previously these existed only on `StateMachineBase`, which `MonoStateMachine` composes rather than inherits, so a subclass could not override them at all (CS0115).
 - Non-generic `ChangeState(Type)`, `ChangeStateAsync(Type, …)`, `TransitionTo(Type)`, `TransitionVia(Type)`, `TransitionToAsync(Type, …)` and `TransitionViaAsync(Type, …)` overloads, plus `StateFactory.CreateState(Type, …)`.
-- **Per-state profiler markers.** Under `ENABLE_PROFILER` (Editor and development builds) the machine samples each state's enter, exit and update / late update / fixed update as `HSM.Enter <State>`, `HSM.Exit <State>`, `HSM.Update <State>` and so on, with the state's full type name and readable generic arguments. Async enter and exit sample only their synchronous segments, since a profiler sample cannot span an `await`.
+- **Per-state profiler markers.** Under `ENABLE_PROFILER` (Editor and development builds) the machine samples each state's enter, exit and update / late update / fixed update as `HSM.Enter <State>`, `HSM.Exit <State>`, `HSM.Update <State>` and so on, with the state's full type name and readable generic arguments (`NS.Outer<System.Int32>.Inner`: CLR type names, nested types joined with `.`, each segment with its own arguments). Async enter and exit sample only their synchronous segments, since a profiler sample cannot span an `await`; a state without async controllers gets one sample, the same as a synchronous change.
 
 ### Fixed
 
@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README no longer claims UniTask is "pulled in automatically as a package dependency" — UPM does not resolve git dependencies transitively, so it never was. Installation now documents UniTask as an explicit first step with a pinned git URL.
 - README no longer documents the `upm` branch and stable install URL as if they existed; they appear when the first non-prerelease version ships.
 - A superseded async transition no longer waits for an async enter/exit callback that ignores its `CancellationToken`. The callback keeps running on its own, and the superseding transition starts at once.
-- `[ControllerGroup]` names each controller's profiler marker with the controller's full type name, generic arguments included (`Sample.CountdownController<Sample.DrivingState>`). It used the simple name, so every closing of a generic controller fell under a single marker.
+- `[ControllerGroup]` names each controller's profiler marker with the controller's full type name, generic arguments included (`Sample.CountdownController<Sample.DrivingState>`), in the same format as the state markers. It used the simple name, so every closing of a generic controller fell under a single marker.
 
 ## [0.0.1-alpha.1] — 2026-07-08
 

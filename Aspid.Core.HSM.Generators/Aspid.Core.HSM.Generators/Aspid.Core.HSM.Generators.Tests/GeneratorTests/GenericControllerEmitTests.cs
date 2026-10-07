@@ -43,14 +43,23 @@ public class GenericControllerEmitTests
                 public void OnEnter() { }
             }
 
+            public static class Outer<T>
+            {
+                public sealed class InnerController : IEnterController
+                {
+                    public void OnEnter() { }
+                }
+            }
+
             [ControllerGroup]
             public sealed partial class CountdownState : IState
             {
                 public CountdownState(
                     CountdownController<DrivingState> toDriving,
-                    CountdownController<FinishingState> toFinishing)
+                    CountdownController<FinishingState> toFinishing,
+                    Outer<int>.InnerController inner)
                 {
-                    AddControllers(toDriving, toFinishing);
+                    AddControllers(toDriving, toFinishing, inner);
                 }
             }
         }
@@ -72,6 +81,15 @@ public class GenericControllerEmitTests
 
         Assert.Contains("new(\"Sample.CountdownController<Sample.DrivingState>\")", generated);
         Assert.Contains("new(\"Sample.CountdownController<Sample.FinishingState>\")", generated);
+    }
+
+    [Fact]
+    public void Controller_marker_uses_the_runtime_state_marker_format()
+    {
+        var (generated, _) = RunGenerator();
+
+        // StateMachineBase.GetMarkerTypeName spells this type the same way: CLR names, nesting with '.'.
+        Assert.Contains("new(\"Sample.Outer<System.Int32>.InnerController\")", generated);
     }
 
     [Fact]
