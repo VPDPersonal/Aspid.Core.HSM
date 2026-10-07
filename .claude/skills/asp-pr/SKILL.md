@@ -177,10 +177,11 @@ Rules:
 ## Ready and merge
 
 Run these only when the user asks. One Bash chain per step. Report the final state of each PR.
+Run `gh pr merge` alone in its own Bash call. In a chain, its `allow` rule does not apply, and the auto-mode classifier can block the merge.
 
 | Request | Command |
 |---|---|
-| Merge («смержи», «мерж в main») | `gh pr ready <N> && gh pr merge <N> --squash --auto`. The PR merges when the required checks pass, or at once if there are none. |
+| Merge («смержи», «мерж в main») | `gh pr ready <N>`, then `gh pr merge <N> --squash --auto` in a separate Bash call. The PR merges when the required checks pass, or at once if there are none. |
 | Ready, no merge | `gh pr ready <N>`. The repo rules have a `Review loop` section? Arm the [review loop](#review-loop) if it is not armed yet. |
 
 The PR changed after its body was written? Update the body before the merge.
@@ -222,7 +223,7 @@ Defaults. The repo's review rules for the bot (for example `.github/claude-revie
    Wait for the next wake.
 7. Stop after 2 re-reviews. Report the open findings to the user.
 8. Merge when the last verdict has 0 blocking, every thread has a reply, and CI is green:
-   - no user questions in this loop → update the body if needed, then run `gh pr merge <N> --squash --auto`. The PR is ready already, so `gh pr ready` is not needed;
+   - no user questions in this loop → update the body if needed. Then run `gh pr merge <N> --squash --auto` in a separate Bash call. The PR is ready already, so `gh pr ready` is not needed;
    - the user was asked something in this loop → give a 3-line summary and ask «мержу?».
 9. Report the result: rounds, fixed findings, declined findings with reasons, merge state.
 
