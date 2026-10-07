@@ -13,6 +13,16 @@
         <ProjectReference Include="..\Aspid.Core.HSM.Generators\Aspid.Core.HSM.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 
+    <!-- The generator's bin/ output is not merged (see ILRepack.targets), so the compiler needs its
+         dependencies as analyzers too, or the generator fails to load. The versions come from
+         Directory.Build.props, shared with the generator. -->
+    <ItemGroup>
+        <PackageReference Include="Aspid.Generators.Helper" Version="$(AspidGeneratorsHelperVersion)" GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+        <PackageReference Include="Aspid.Generators.Helper.Unity" Version="$(AspidGeneratorsHelperUnityVersion)" GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+        <Analyzer Include="$(PkgAspid_Generators_Helper)/lib/netstandard2.0/Aspid.Generators.Helper.dll" />
+        <Analyzer Include="$(PkgAspid_Generators_Helper_Unity)/lib/netstandard2.0/Aspid.Generators.Helper.Unity.dll" />
+    </ItemGroup>
+
     <ItemGroup>
       <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Extensions\StateExtensions.cs">
         <Link>Source\Extensions\StateExtensions.cs</Link>

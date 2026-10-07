@@ -9,7 +9,7 @@ This repo contains two independent .NET projects that share source files:
 - `Aspid.Core.HSM/` — A Unity 2022.3 project that hosts the HSM runtime as a Unity package at `Assets/Plugins/Aspid/Core/HSM/` (package id `com.aspid.core.hsm`). The package contains both the framework source (`Source/`, asmdef `Aspid.Core.HSM`) and Unity-specific runtime types (`Unity/Runtime/`, asmdef `Aspid.Core.HSM.Unity`). The compiled source generator DLL is dropped into the package as `Aspid.Core.HSM.Generators.dll` so Unity picks it up.
 - `Aspid.Core.HSM.Generators/` — A .NET solution (`.slnx`) with the source generator project (`netstandard2.0`, Roslyn incremental generator), a Sample project, and an xUnit test project. The Tests csproj re-includes the runtime `.cs` files from the Unity package via `<Compile Include="..\..\..\Aspid.Core.HSM\Assets\...\*.cs" />` linking, so the runtime can be tested outside Unity.
 
-The generator project depends on `SourceGenerator.Foundations`, `Aspid.Generators.Helper`, and `Aspid.Generators.Helper.Unity`.
+The generator project depends on `Aspid.Generators.Helper` and `Aspid.Generators.Helper.Unity`, pinned to exact versions in `Aspid.Core.HSM.Generators/Directory.Build.props`. `ILRepack.targets` merges them into the one DLL that ships in the package. Never add `SourceGenerator.Foundations`: its module initializer writes to `Console`, which hangs Unity's compiler server.
 
 ## Common commands
 
@@ -17,11 +17,12 @@ Run from `Aspid.Core.HSM.Generators/`:
 
 ```bash
 dotnet build Aspid.Core.HSM.Generators.slnx
+dotnet build Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators -c Release
 dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core.HSM.Generators.Tests.csproj
 dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests/Aspid.Core.HSM.Generators.Tests.csproj --filter FullyQualifiedName~StateMachineBaseTests
 ```
 
-After modifying the generator, just run `dotnet build` — the `CopyGeneratorToUnityPackage` target in `Aspid.Core.HSM.Generators/.../Directory.Build.targets` (`AfterTargets="Build"`) drops the DLL into `Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/`. Do not copy by hand and do not add a hook for this. The Unity project itself is built/run from the Unity Editor, not the CLI.
+After modifying the generator, run the Release build above — the `CopyGeneratorToUnityPackage` target in `Aspid.Core.HSM.Generators/.../Directory.Build.targets` drops the merged DLL into `Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/`. Only a Release build copies it: `dotnet test` and other Debug builds never touch the shipped DLL. The build is deterministic, so the same sources give the same bytes on any machine with the SDK from `global.json`. Do not copy by hand and do not add a hook for this. The Unity project itself is built/run from the Unity Editor, not the CLI.
 
 ## HSM architecture
 

@@ -23,7 +23,7 @@ Check, in this order:
    - `Source/` (asmdef `Aspid.Core.HSM`) does not reference `UnityEngine`;
    - Unity-specific code goes to `Unity/Runtime/`;
    - no editor-only APIs reachable from runtime code;
-   - the generator targets `netstandard2.0` and does not write to `Console`;
+   - the generator targets `netstandard2.0`, does not write to `Console` and does not reference `SourceGenerator.Foundations`;
    - a new file under `Assets/` ships with its `.meta`;
    - Unity manages `.meta` files: no `.meta` is edited by hand.
 3. Public API: a change needs an entry under `[Unreleased]` in `CHANGELOG.md`.
@@ -31,7 +31,7 @@ Check, in this order:
    A rename of a public attribute or type in the runtime needs an update of
    `Descriptions/HsmClasses.cs` or `HsmNamespaces.cs` in the generator.
 4. Generators: a source change needs the rebuilt `Aspid.Core.HSM.Generators.dll` in the package.
-   `dotnet build` copies it there.
+   `dotnet build -c Release` copies it there; a Debug build does not.
    A new or changed emit branch needs a snapshot test in `Aspid.Core.HSM.Generators.Tests/`.
 5. Version: the `package.json` version and the `CHANGELOG.md` heading must agree. `release.yml` checks this.
 

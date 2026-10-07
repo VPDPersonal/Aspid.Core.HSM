@@ -4,8 +4,12 @@
         <UnityHsmPluginPath>$(MSBuildThisFileDirectory)..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\</UnityHsmPluginPath>
     </PropertyGroup>
 
-    <Target Name="CopyGeneratorToUnityPackage" AfterTargets="Build" Condition="Exists('$(UnityHsmPluginPath)')">
-        <Copy SourceFiles="$(TargetPath)"
+    <!-- Ships the merged single-file analyzer DLL produced by ILRepack.targets into the Unity package.
+         Release-only: the Tests and Sample projects reference the generator, so a Debug `dotnet test`
+         run would otherwise overwrite the shipped Release DLL with a Debug build. -->
+    <Target Name="CopyGeneratorToUnityPackage" AfterTargets="ILRepacker"
+            Condition="'$(IsRoslynComponent)' == 'true' And '$(Configuration)' == 'Release' And Exists('$(UnityHsmPluginPath)')">
+        <Copy SourceFiles="$(UnityAnalyzerMergedPath)"
               DestinationFolder="$(UnityHsmPluginPath)"
               SkipUnchangedFiles="true"
               OverwriteReadOnlyFiles="true" />

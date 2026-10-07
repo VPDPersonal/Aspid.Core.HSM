@@ -1,6 +1,6 @@
 ---
 name: rebuild-generator
-description: Rebuild the Roslyn source generator. The compiled DLL is automatically delivered into the Unity package via Directory.Build.targets (CopyGeneratorToUnityPackage). Use when generator code under Aspid.Core.HSM.Generators/ has changed and Unity needs the updated DLL.
+description: Rebuild the Roslyn source generator. A Release build merges the helpers into one DLL (ILRepack.targets) and delivers it into the Unity package via Directory.Build.targets (CopyGeneratorToUnityPackage). Use when generator code under Aspid.Core.HSM.Generators/ has changed and Unity needs the updated DLL.
 disable-model-invocation: true
 ---
 
@@ -15,7 +15,7 @@ cd Aspid.Core.HSM.Generators
 dotnet build Aspid.Core.HSM.Generators.slnx -c Release
 ```
 
-The copy into `Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/Aspid.Core.HSM.Generators.dll` is **not** performed by this skill — it happens inside MSBuild via the `CopyGeneratorToUnityPackage` target in `Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Directory.Build.targets`. Do not add manual copy steps here or in hooks; if the DLL is not appearing, fix the target.
+The copy into `Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/Aspid.Core.HSM.Generators.dll` is **not** performed by this skill — it happens inside MSBuild via the `CopyGeneratorToUnityPackage` target in `Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Directory.Build.targets`. The target runs only in Release, after the `ILRepacker` target merges `Aspid.Generators.Helper*` into the DLL; a Debug build or `dotnet test` never copies. Do not add manual copy steps here or in hooks; if the DLL is not appearing, fix the target.
 
 ## After running
 
