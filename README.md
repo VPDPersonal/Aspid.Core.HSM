@@ -1,7 +1,7 @@
 # Aspid.Core.HSM
 
 <p>
-  <img src="https://img.shields.io/badge/Unity_2022.3%2B-000000?style=flat&logo=unity&logoColor=white&color=4fa35d" alt="Unity 2022.3+" />
+  <img src="https://img.shields.io/badge/Unity_6000.0%2B-000000?style=flat&logo=unity&logoColor=white&color=4fa35d" alt="Unity 6000.0+" />
   <a href="https://github.com/VPDPersonal/Aspid.Core.HSM/releases"><img src="https://img.shields.io/github/package-json/v/VPDPersonal/Aspid.Core.HSM/upm-preview?label=Preview&labelColor=4d4425&color=a3923d" alt="Preview" /></a>
   <img src="https://img.shields.io/badge/License-MIT-000000?style=flat&labelColor=254d2c&color=4fa35d" alt="MIT" />
 </p>
@@ -40,6 +40,10 @@ https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview/0.0.1-alpha.1
 ```
 
 > **Note.** There is no stable release yet, so the `upm` branch does not exist. The [Release workflow](.github/workflows/release.yml) creates it — along with `upm/<version>` tags and a `#upm` install URL — when the first non-prerelease version ships.
+
+### Game Loop sample
+
+Import it from the package's **Samples** tab. Its scripts read input through the [Input System](https://docs.unity3d.com/Packages/com.unity.inputsystem@latest), so install `com.unity.inputsystem` from the Unity Registry first, or the sample does not compile.
 
 ## License
 

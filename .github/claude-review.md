@@ -19,7 +19,7 @@ Check, in this order:
    - `StateMachineBase` only diffs the chain and calls enter and exit;
    - a change on one side keeps the assumptions of the other side: `Release` on exit, `_initializedStates` for the first enter.
 2. Boundaries:
-   - `package.json` declares Unity `2022.3`: no Unity API newer than 2022.3 without a version guard;
+   - `package.json` declares Unity `6000.0.53f1`: no Unity API newer than that without a `#if UNITY_6000_x_OR_NEWER` guard;
    - `Source/` (asmdef `Aspid.Core.HSM`) does not reference `UnityEngine`;
    - Unity-specific code goes to `Unity/Runtime/`;
    - no editor-only APIs reachable from runtime code;
