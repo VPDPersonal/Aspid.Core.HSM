@@ -18,6 +18,7 @@ namespace Aspid.Core.HSM
         private readonly Stack<List<IState>> _chainBufferPool = new();
         private readonly Queue<PendingRequest> _pendingRequests = new();
         private bool _isChangingState;
+        private bool _isTicking;
 
         private CancellationTokenSource? _activeTransitionCts;
 
@@ -36,59 +37,76 @@ namespace Aspid.Core.HSM
         /// Dispatches <see cref="IUpdateController.Update"/> to all active states and extensions.
         /// </summary>
         /// <param name="deltaTime">Time in seconds since the previous frame.</param>
-        protected void Update(float deltaTime)
-        {
-            foreach (var state in _currentStates)
-            {
-                var controller = state.GetController<IUpdateController>();
-                if (controller is not null && IsControllerEnabled(controller, state))
-                    controller.Update(deltaTime);
-            }
-            foreach (var ext in _activeExtensions)
-            {
-                var controller = ext.GetController<IUpdateController>();
-                if (controller is not null && IsControllerEnabled(controller, ext))
-                    controller.Update(deltaTime);
-            }
-        }
+        protected void Update(float deltaTime) =>
+            Tick<IUpdateController>(deltaTime, static (controller, dt) => controller.Update(dt));
 
         /// <summary>
         /// Dispatches <see cref="ILateUpdateController.LateUpdate"/> to all active states and extensions.
         /// </summary>
         /// <param name="deltaTime">Time in seconds since the previous frame.</param>
-        protected void LateUpdate(float deltaTime)
-        {
-            foreach (var state in _currentStates)
-            {
-                var controller = state.GetController<ILateUpdateController>();
-                if (controller is not null && IsControllerEnabled(controller, state))
-                    controller.LateUpdate(deltaTime);
-            }
-            foreach (var ext in _activeExtensions)
-            {
-                var controller = ext.GetController<ILateUpdateController>();
-                if (controller is not null && IsControllerEnabled(controller, ext))
-                    controller.LateUpdate(deltaTime);
-            }
-        }
+        protected void LateUpdate(float deltaTime) =>
+            Tick<ILateUpdateController>(deltaTime, static (controller, dt) => controller.LateUpdate(dt));
 
         /// <summary>
         /// Dispatches <see cref="IFixedUpdateController.FixedUpdate"/> to all active states and extensions.
         /// </summary>
         /// <param name="deltaTime">The fixed timestep interval in seconds.</param>
-        protected void FixedUpdate(float deltaTime)
+        protected void FixedUpdate(float deltaTime) =>
+            Tick<IFixedUpdateController>(deltaTime, static (controller, dt) => controller.FixedUpdate(dt));
+
+        /// <summary>
+        /// Runs one tick over the active chain and then the active extensions. A synchronous state change
+        /// requested by a controller during the tick is queued and applied once every controller has been
+        /// ticked, so the tick never walks a chain that is being rewritten underneath it.
+        /// </summary>
+        private void Tick<TController>(float deltaTime, Action<TController, float> invoke)
+            where TController : IController
         {
-            foreach (var state in _currentStates)
+            _isTicking = true;
+            try
             {
-                var controller = state.GetController<IFixedUpdateController>();
-                if (controller is not null && IsControllerEnabled(controller, state))
-                    controller.FixedUpdate(deltaTime);
+                // Indexed rather than foreach: a controller may still attach or detach an extension, or start
+                // an async transition, and those change the lists mid-tick. An index sees them as they are now:
+                // a state or extension removed before its turn is skipped instead of throwing.
+                for (var i = 0; i < _currentStates.Count; i++)
+                {
+                    var state = _currentStates[i];
+                    var controller = state.GetController<TController>();
+                    if (controller is not null && IsControllerEnabled(controller, state))
+                        invoke(controller, deltaTime);
+                }
+
+                for (var i = 0; i < _activeExtensions.Count; i++)
+                {
+                    var extension = _activeExtensions[i];
+                    var controller = extension.GetController<TController>();
+                    if (controller is not null && IsControllerEnabled(controller, extension))
+                        invoke(controller, deltaTime);
+                }
             }
-            foreach (var ext in _activeExtensions)
+            catch
             {
-                var controller = ext.GetController<IFixedUpdateController>();
-                if (controller is not null && IsControllerEnabled(controller, ext))
-                    controller.FixedUpdate(deltaTime);
+                // A throwing controller must not leak the requests made before it into a later tick.
+                _pendingRequests.Clear();
+                throw;
+            }
+            finally
+            {
+                _isTicking = false;
+            }
+
+            if (_pendingRequests.Count > 0)
+            {
+                // An async transition started later in the same tick owns the chain now. Applying the
+                // deferred change on top of it would corrupt the chain, so it is rejected the same way an
+                // immediate ChangeState is rejected while an async transition is in progress.
+                if (_activeTransitionCts is not null)
+                {
+                    _pendingRequests.Clear();
+                    ThrowIfAsyncTransitionInProgress();
+                }
+
+                RunToCompletion(_pendingRequests.Dequeue());
             }
         }
         #endregion
@@ -196,15 +214,21 @@ namespace Aspid.Core.HSM
         /// running — the usual case being a state that redirects from its own <see cref="IState.Enter"/>
         /// or <see cref="IEnterController.OnEnter"/> — is queued and applied once the running change
         /// completes, rather than mutating the chain underneath it (run-to-completion semantics).
+        /// A request made from an update controller is likewise queued until the tick finishes.
         /// </summary>
         private void Request(PendingRequest request)
         {
-            if (_isChangingState)
+            if (_isChangingState || _isTicking)
             {
                 _pendingRequests.Enqueue(request);
                 return;
             }
 
+            RunToCompletion(request);
+        }
+
+        private void RunToCompletion(PendingRequest request)
+        {
             _isChangingState = true;
             try
             {
