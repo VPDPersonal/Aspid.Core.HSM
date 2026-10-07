@@ -383,4 +383,25 @@ public class AsyncRollbackTests
         Assert.Equal(1, _family.ExitCalled);
         Assert.Contains(_family, _factory.ReleasedStates);
     }
+
+    [Fact]
+    public async Task Several_throwing_detaches_during_the_rollback_stay_flat_after_the_cause()
+    {
+        _sm.ChangeState<RbOldLeaf>();
+        _sm.AttachExtension<RbLeafOnlyExtension>();
+        _sm.AttachExtension<RbSecondLeafOnlyExtension>();
+        _leafOnlyExtension.ThrowOnDetached = true;
+        _secondLeafOnlyExtension.ThrowOnDetached = true;
+        using var cts = new CancellationTokenSource();
+
+        var task = _sm.ChangeStateAsync<RbBlockingLeaf>(cts.Token);
+        cts.Cancel();
+
+        // One flat list: the cause, then each detach failure, with no AggregateException nested inside.
+        var exception = await Assert.ThrowsAsync<AggregateException>(async () => await task);
+        Assert.Equal(3, exception.InnerExceptions.Count);
+        Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerExceptions[0]);
+        Assert.All(exception.InnerExceptions.Skip(1), inner => Assert.Equal("detach failed", inner.Message));
+        Assert.Empty(_sm.ActiveExtensions);
+    }
 }

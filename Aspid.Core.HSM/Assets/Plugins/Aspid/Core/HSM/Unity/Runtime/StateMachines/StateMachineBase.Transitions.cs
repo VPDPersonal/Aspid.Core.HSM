@@ -42,6 +42,7 @@ namespace Aspid.Core.HSM
         /// </remarks>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// Or several extensions threw while the change detached them.
         /// </exception>
         public void TransitionTo<TTarget>() where TTarget : IState =>
             TransitionTo(typeof(TTarget));
@@ -109,6 +110,7 @@ namespace Aspid.Core.HSM
         /// </remarks>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// Or several extensions threw while the change detached them.
         /// </exception>
         public void TransitionVia<TTransition>() where TTransition : ITransition =>
             TransitionVia(typeof(TTransition));
@@ -151,6 +153,7 @@ namespace Aspid.Core.HSM
         /// <exception cref="AggregateException">
         /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
         /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// Or several extensions threw while the transition detached them.
         /// </exception>
         public UniTask TransitionToAsync<TTarget>(CancellationToken ct = default)
             where TTarget : IState =>
@@ -227,6 +230,7 @@ namespace Aspid.Core.HSM
         /// <exception cref="AggregateException">
         /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
         /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// Or several extensions threw while the transition detached them.
         /// </exception>
         public UniTask TransitionViaAsync<TTransition>(CancellationToken ct = default)
             where TTransition : ITransition =>

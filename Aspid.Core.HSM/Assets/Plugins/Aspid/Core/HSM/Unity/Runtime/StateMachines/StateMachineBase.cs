@@ -140,6 +140,7 @@ namespace Aspid.Core.HSM
         /// <exception cref="InvalidOperationException">An async transition is already in progress.</exception>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// Or several extensions threw while the change detached them.
         /// </exception>
         public void ChangeState<TState>()
             where TState : IState =>
@@ -224,14 +225,7 @@ namespace Aspid.Core.HSM
                 (failures ??= new List<Exception>()).Add(exception);
             }
 
-            try
-            {
-                AutoDetachIncompatibleExtensions();
-            }
-            catch (Exception exception)
-            {
-                (failures ??= new List<Exception>()).Add(exception);
-            }
+            failures = DetachIncompatibleExtensions(failures);
 
             if (failures is not null)
             {

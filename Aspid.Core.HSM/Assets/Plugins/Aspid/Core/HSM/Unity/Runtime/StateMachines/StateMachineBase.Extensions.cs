@@ -121,11 +121,15 @@ namespace Aspid.Core.HSM
             return -1;
         }
 
+        private void AutoDetachIncompatibleExtensions() =>
+            ThrowFailures(DetachIncompatibleExtensions(failures: null));
+
         // Every incompatible extension is detached even if one of them throws, as in DetachExtensionsBoundTo.
-        private void AutoDetachIncompatibleExtensions()
+        // The failures are added to the given list rather than thrown, so a caller that already collects
+        // failures keeps them flat instead of nesting an AggregateException. Returns the list.
+        private List<Exception>? DetachIncompatibleExtensions(List<Exception>? failures)
         {
             var leafState = _currentStates[^1];
-            List<Exception>? failures = null;
             for (int i = _activeExtensions.Count - 1; i >= 0; i--)
             {
                 try
@@ -139,7 +143,7 @@ namespace Aspid.Core.HSM
                 }
             }
 
-            ThrowFailures(failures);
+            return failures;
         }
 
         // A single failure is rethrown as it is, with its stack trace; several go out together.

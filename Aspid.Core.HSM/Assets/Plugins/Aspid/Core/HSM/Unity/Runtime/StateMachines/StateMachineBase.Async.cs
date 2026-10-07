@@ -43,6 +43,7 @@ namespace Aspid.Core.HSM
         /// <exception cref="AggregateException">
         /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
         /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// Or several extensions threw while the transition detached them.
         /// </exception>
         public UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState =>
