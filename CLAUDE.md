@@ -57,3 +57,10 @@ When adding a state, implement `IState`, add `IChildState<TParent>` if it has a 
 - `.claude/skills/asp-branch`, `asp-commit`, `asp-pr` — branch names, commits and pull requests. Use them for every commit and PR, so that all contributors follow one format. `asp-pr` reads repo-specific rules (scopes, labels, review loop) from `.claude/asp-pr.md` when that file exists. `asp-commit` and `asp-pr` run `sh` scripts and need `git` and an authenticated `gh`. On Windows, install Git for Windows: Claude Code then runs them in Git Bash.
 - `.claude/skills/asp-xmldoc` — XML docs (`///`) conventions for public C# API. It loads before you write a `///` comment.
 - `.mcp.json` ships `context7` (Roslyn/Unity docs) and `github` (needs `GITHUB_PERSONAL_ACCESS_TOKEN`).
+- `.github/workflows/claude.yml` runs `anthropics/claude-code-action` in two jobs:
+  - `review`: one automatic review when a PR opens or leaves draft;
+  - `mention`: replies to `@claude` comments in PRs and issues.
+
+  Edit the review rules and the `Verdict: <N> blocking, <M> minor` format in `.github/claude-review.md`.
+  The jobs need the `CLAUDE_CODE_OAUTH_TOKEN` repository secret.
+- `.claude/asp-pr.md` — PR rules for the `asp-pr` skill: types, scopes and the review loop.
