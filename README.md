@@ -1,7 +1,7 @@
 # Aspid.Core.HSM
 
 <p>
-  <img src="https://img.shields.io/badge/Unity_2022.3%2B-000000?style=flat&logo=unity&logoColor=white&color=4fa35d" alt="Unity 2022.3+" />
+  <img src="https://img.shields.io/badge/Unity_6000.0%2B-000000?style=flat&logo=unity&logoColor=white&color=4fa35d" alt="Unity 6000.0+" />
   <a href="https://github.com/VPDPersonal/Aspid.Core.HSM/releases"><img src="https://img.shields.io/github/package-json/v/VPDPersonal/Aspid.Core.HSM/upm-preview?label=Preview&labelColor=4d4425&color=a3923d" alt="Preview" /></a>
   <img src="https://img.shields.io/badge/License-MIT-000000?style=flat&labelColor=254d2c&color=4fa35d" alt="MIT" />
 </p>

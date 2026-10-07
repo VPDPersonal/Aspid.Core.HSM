@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MonoStateMachine` now exposes `IsStateEnabled`, `IsControllerEnabled`, `IsTransitionEnabled` and `StrictTransitions` as `protected virtual` members and forwards them to the internal core. Previously these existed only on `StateMachineBase`, which `MonoStateMachine` composes rather than inherits, so a subclass could not override them at all (CS0115).
 - Non-generic `ChangeState(Type)`, `ChangeStateAsync(Type, …)`, `TransitionTo(Type)`, `TransitionVia(Type)`, `TransitionToAsync(Type, …)` and `TransitionViaAsync(Type, …)` overloads, plus `StateFactory.CreateState(Type, …)`.
 
+### Changed
+
+- **The minimum Unity is now 6000.0.53f1**, the same as in Aspid.FastTools. `package.json` promised Unity 2022.3, but the package was never built or tested there. CI now compiles the package and its sample on Unity 6000.0.
+
 ### Fixed
 
 - **Unity script compilation could hang, and the generator DLL weighed 17.6 MB.** The generator shipped with `SourceGenerator.Foundations`, whose module initializer writes to `Console` on every load; inside Unity's long-lived compiler server the undrained stdout pipe can fill up and script compilation stops. The package now ships the generator with only `Aspid.Generators.Helper*` merged into it by ILRepack: 75 KB, and nothing writes to `Console`.
