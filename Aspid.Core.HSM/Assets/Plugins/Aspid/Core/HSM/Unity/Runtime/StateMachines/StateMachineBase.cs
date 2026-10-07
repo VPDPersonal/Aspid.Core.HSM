@@ -116,6 +116,12 @@ namespace Aspid.Core.HSM
             if (!IsTransitionEnabled(_currentStates[^1].GetType(), stateType))
                 return;
 
+            ChangeStateCore(stateType);
+        }
+
+        // Diffs and swaps the chain with no guard checks: every caller has checked the guards already.
+        private void ChangeStateCore(Type stateType)
+        {
             OnChangingState();
             {
                 // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,

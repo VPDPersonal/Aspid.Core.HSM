@@ -62,7 +62,7 @@ namespace Aspid.Core.HSM
                     return;
 
                 transition.OnBeforeTransition();
-                ApplyChangeState(targetType);
+                ChangeStateCore(targetType);
                 transition.OnAfterTransition();
                 return;
             }
@@ -74,7 +74,7 @@ namespace Aspid.Core.HSM
 
             if (chain is null)
             {
-                ApplyChangeState(targetType);
+                ChangeStateCore(targetType);
                 return;
             }
 
@@ -87,7 +87,7 @@ namespace Aspid.Core.HSM
             foreach (var t in chain)
                 t.OnBeforeTransition();
 
-            ApplyChangeState(targetType);
+            ChangeStateCore(targetType);
 
             for (var i = chain.Count - 1; i >= 0; i--)
                 chain[i].OnAfterTransition();
@@ -118,7 +118,7 @@ namespace Aspid.Core.HSM
                 return;
 
             transition.OnBeforeTransition();
-            ApplyChangeState(transition.TargetState);
+            ChangeStateCore(transition.TargetState);
             transition.OnAfterTransition();
         }
         #endregion
@@ -134,9 +134,14 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         public async UniTask TransitionToAsync(Type targetType, CancellationToken ct = default)
         {
+            if (!IsStateEnabled(targetType))
+                return;
+
+            // Resolve the edge only after the superseded transition has unwound, as ChangeStateAsync does.
+            await SupersedeActiveTransitionAsync();
             var currentLeafType = _currentStates[^1].GetType();
 
-            if (!IsStateEnabled(targetType) || !IsTransitionEnabled(currentLeafType, targetType))
+            if (!IsTransitionEnabled(currentLeafType, targetType))
                 return;
 
             var transition = ResolveTransition(currentLeafType, targetType);
@@ -147,7 +152,7 @@ namespace Aspid.Core.HSM
                     return;
 
                 transition.OnBeforeTransition();
-                await ChangeStateAsync(targetType, ct);
+                await RunTransitionCoreAsync(targetType, ct);
                 transition.OnAfterTransition();
                 return;
             }
@@ -159,7 +164,7 @@ namespace Aspid.Core.HSM
 
             if (chain is null)
             {
-                await ChangeStateAsync(targetType, ct);
+                await RunTransitionCoreAsync(targetType, ct);
                 return;
             }
 
@@ -172,7 +177,7 @@ namespace Aspid.Core.HSM
             foreach (var t in chain)
                 t.OnBeforeTransition();
 
-            await ChangeStateAsync(targetType, ct);
+            await RunTransitionCoreAsync(targetType, ct);
 
             for (var i = chain.Count - 1; i >= 0; i--)
                 chain[i].OnAfterTransition();
@@ -191,15 +196,19 @@ namespace Aspid.Core.HSM
         public async UniTask TransitionViaAsync(Type transitionType, CancellationToken ct = default)
         {
             var transition = FindTransitionByType(transitionType);
+
+            if (!IsStateEnabled(transition.TargetState))
+                return;
+
+            await SupersedeActiveTransitionAsync();
             var currentLeafType = _currentStates[^1].GetType();
 
-            if (!IsStateEnabled(transition.TargetState) ||
-                !IsTransitionEnabled(currentLeafType, transition.TargetState) ||
+            if (!IsTransitionEnabled(currentLeafType, transition.TargetState) ||
                 !transition.CanTransition())
                 return;
 
             transition.OnBeforeTransition();
-            await ChangeStateAsync(transition.TargetState, ct);
+            await RunTransitionCoreAsync(transition.TargetState, ct);
             transition.OnAfterTransition();
         }
         #endregion

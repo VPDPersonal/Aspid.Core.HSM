@@ -203,6 +203,24 @@ public class ReentrancyAndGuardsTests
         Assert.IsType<SiblingChildTestState>(sm.CurrentStates[^1]);
     }
 
+    // TransitionTo used to consult the guards a second time inside ChangeState, after OnBeforeTransition had run.
+    // A guard that changed its answer there skipped the state change but still ran OnAfterTransition.
+    [Fact]
+    public void TransitionTo_consults_the_edge_guard_once()
+    {
+        var sm = new GuardedStateMachine(CreateHierarchyFactory());
+        var transition = new ChildToSiblingSegmentTransition();
+        sm.RegisterTransition(transition);
+        sm.ChangeState<ChildTestState>();
+        sm.ObservedEdges.Clear();
+
+        sm.TransitionTo<SiblingChildTestState>();
+
+        Assert.Single(sm.ObservedEdges);
+        Assert.Equal(1, transition.AfterCount);
+        Assert.IsType<SiblingChildTestState>(sm.CurrentStates[^1]);
+    }
+
     // ChangeState is the documented escape hatch and stays outside the registry check.
     [Fact]
     public void ChangeState_is_not_subject_to_StrictTransitions()
