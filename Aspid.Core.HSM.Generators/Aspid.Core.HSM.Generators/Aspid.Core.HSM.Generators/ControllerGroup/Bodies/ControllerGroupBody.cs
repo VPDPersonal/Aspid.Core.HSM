@@ -113,7 +113,9 @@ public static class ControllerGroupBody
             for (var i = 0; i < data.Controllers.Length; i++)
             {
                 var markerName = GetMarkerNameForController(i);
-                var controllerName = data.Controllers[i].Symbol.Name;
+                // Full name with generic arguments: CountdownController<ClassicDrivingState> and
+                // CountdownController<NetworkDrivingState> must not collapse into one profiler entry.
+                var controllerName = GetMarkerTypeName(data.Controllers[i].Symbol);
 
                 code.AppendMultiline(
                     $"""
@@ -445,4 +447,33 @@ public static class ControllerGroupBody
 
     private static string GetMarkerNameForController(int controllerIndex) =>
         $"__controller{controllerIndex}Marker";
+
+    // Same format as StateMachineBase.GetMarkerTypeName at runtime: full CLR names (System.Int32, not int),
+    // nested types joined with '.', tuples and Nullable<T> spelled out as their generic types. One type then
+    // has one marker name in a profile. Built by hand: Roslyn 4.3 has no display option that expands tuples.
+    private static string GetMarkerTypeName(ITypeSymbol type)
+    {
+        switch (type)
+        {
+            case IArrayTypeSymbol array:
+                return $"{GetMarkerTypeName(array.ElementType)}[{new string(',', array.Rank - 1)}]";
+
+            case INamedTypeSymbol named:
+                named = named.TupleUnderlyingType ?? named;
+
+                var name = named.TypeArguments.Length == 0
+                    ? named.Name
+                    : $"{named.Name}<{string.Join(", ", named.TypeArguments.Select(GetMarkerTypeName))}>";
+
+                if (named.ContainingType is { } containingType)
+                    return $"{GetMarkerTypeName(containingType)}.{name}";
+
+                return named.ContainingNamespace is { IsGlobalNamespace: false } containingNamespace
+                    ? $"{containingNamespace.ToDisplayString()}.{name}"
+                    : name;
+
+            default:
+                return type.Name;
+        }
+    }
 }
