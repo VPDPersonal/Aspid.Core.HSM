@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 
 // ReSharper disable once CheckNamespace
@@ -26,14 +27,23 @@ namespace Aspid.Core.HSM
         /// </para>
         /// <para>
         /// For the same reason, an async enter callback can redirect the machine by awaiting this method:
-        /// the new call supersedes the transition that runs the callback. An async exit callback must not do this:
-        /// its state stays active, so the new transition exits it again and the callback runs again.
+        /// the new call supersedes the transition that runs the callback.
+        /// </para>
+        /// <para>
+        /// A cancelled or failed transition rolls back: an exit that has started completes and releases its state,
+        /// and every state below the point where the old and new chains diverge is exited and released. The chain
+        /// ends at the ancestors both chains share, or at <see cref="EmptyState"/>.
         /// </para>
         /// </remarks>
         /// <typeparam name="TState">The target leaf state type.</typeparam>
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
         /// <exception cref="InvalidOperationException">
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// </exception>
+        /// <exception cref="AggregateException">
+        /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
+        /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// Or several extensions threw while the transition detached them.
         /// </exception>
         public UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState =>
@@ -107,15 +117,18 @@ namespace Aspid.Core.HSM
                 // Rented per in-flight transition: the chain is read across awaits, so a buffer shared
                 // with the factory or with another transition would be rewritten underneath this loop.
                 var newChain = RentTypeChainBuffer();
+                var divergeIndex = -1;
                 try
                 {
                     _stateFactory.BuildTypeChain(stateType, newChain);
-                    var divergeIndex = FindDivergeIndex(newChain);
+                    divergeIndex = FindDivergeIndex(newChain);
 
                     for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
                     {
-                        await ExitStateAsync(_currentStates[i], token);
-                        _currentStates.RemoveAt(i);
+                        // An exit that has started always completes (see ExitStateAsync), so the state
+                        // leaves the chain even when its exit is cancelled or throws.
+                        try { await ExitStateAsync(_currentStates[i], token); }
+                        finally { _currentStates.RemoveAt(i); }
                     }
 
                     for (var i = divergeIndex; i < newChain.Count; i++)
@@ -126,6 +139,13 @@ namespace Aspid.Core.HSM
                         await EnterStateAsync(state, token);
                     }
                 }
+                catch (Exception exception)
+                {
+                    // A chain that failed to build left the active chain as it was: nothing to roll back,
+                    // but the change is still closed.
+                    await RollBackAsync(divergeIndex >= 0 ? divergeIndex : _currentStates.Count, exception);
+                    throw;
+                }
                 finally
                 {
                     ReturnTypeChainBuffer(newChain);
@@ -135,23 +155,44 @@ namespace Aspid.Core.HSM
             AutoDetachIncompatibleExtensions();
         }
 
+        // Undoes a transition that was cancelled or threw: every state from divergeIndex down — old states not
+        // yet exited and new states entered so far, including the one whose enter was interrupted — is exited
+        // from the tail and released. What remains are the ancestors the old and new chains share, all fully
+        // entered. Rollback exits are not cancellable, so no state is left half-exited. A state whose rollback
+        // exit throws is still removed and released. The change is then closed the same way as a failed sync one.
+        private async UniTask RollBackAsync(int divergeIndex, Exception cause)
+        {
+            List<Exception>? failures = null;
+
+            for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+            {
+                try { await ExitStateAsync(_currentStates[i], CancellationToken.None); }
+                catch (Exception exception) { (failures ??= new List<Exception>()).Add(exception); }
+                finally { _currentStates.RemoveAt(i); }
+            }
+
+            CloseFailedChange(cause, failures);
+        }
+
+        // An exit, once started, always completes: IState.Exit and Release run even when the bound extensions'
+        // detach, OnExitingState or the exit controllers are cancelled or throw. The callbacks that did not get to
+        // run are not called again. OnExitedState runs only if OnExitingState did, so the hooks stay paired.
         private async UniTask ExitStateAsync(IState state, CancellationToken cancellationToken)
         {
-            DetachExtensionsBoundTo(state);
-
-            OnExitingState(state);
+            var isExiting = false;
+            var isExited = false;
+            try
             {
+                DetachExtensionsBoundTo(state);
+
+                isExiting = true;
+                OnExitingState(state);
+
                 if (state is IAsyncExitController asyncExit)
                 {
                     // Stop waiting on cancellation even if the callback ignores the token. A callback that awaits
                     // the superseding transition would otherwise deadlock: that transition waits for this unwind.
                     await asyncExit.OnExitAsync(cancellationToken).AttachExternalCancellation(cancellationToken);
-
-                    // Only synchronous segments are measured: a profiler sample cannot span an await.
-#if ENABLE_PROFILER
-                    using (GetMarkers(state).Exit.Auto())
-#endif
-                    state.Exit();
                 }
                 else
                 {
@@ -160,14 +201,44 @@ namespace Aspid.Core.HSM
                     using (GetMarkers(state).Exit.Auto())
 #endif
                     {
-                        state.GetController<IExitController>()?.OnExit();
-                        state.Exit();
+                        try
+                        {
+                            state.GetController<IExitController>()?.OnExit();
+                        }
+                        finally
+                        {
+                            isExited = true;
+                            state.Exit();
+                        }
                     }
                 }
             }
-            OnExitedState(state);
-
-            _stateFactory.Release(state);
+            finally
+            {
+                try
+                {
+                    if (!isExited)
+                    {
+                        // Only synchronous segments are measured: a profiler sample cannot span an await.
+#if ENABLE_PROFILER
+                        using (GetMarkers(state).Exit.Auto())
+#endif
+                        state.Exit();
+                    }
+                }
+                finally
+                {
+                    try
+                    {
+                        if (isExiting)
+                            OnExitedState(state);
+                    }
+                    finally
+                    {
+                        _stateFactory.Release(state);
+                    }
+                }
+            }
         }
 
         private async UniTask EnterStateAsync(IState state, CancellationToken cancellationToken)
