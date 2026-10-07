@@ -7,7 +7,7 @@
 # Prints the Unity version to stdout.
 #
 # Local run:
-#   v=$(scripts/make-unity-test-project.sh /tmp/hsm-ci 6000.0.64f1)
+#   v=$(scripts/make-unity-test-project.sh /tmp/hsm-ci 6000.0.53f1)
 #   "/Applications/Unity/Hub/Editor/$v/Unity.app/Contents/MacOS/Unity" -batchmode -nographics -projectPath /tmp/hsm-ci \
 #     -runTests -testPlatform EditMode -testResults /tmp/hsm-ci/results.xml
 set -euo pipefail
@@ -35,13 +35,15 @@ PACKAGE_REF="$(python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sy
 
 # UniTask is not in the Unity registry, so package.json cannot declare it: users add it from git, and so does this
 # project. The Input System is what the Game Loop sample uses.
+# test-framework 1.4.6 is the newest one on the registry, which early 6000.0 releases resolve from; later Editors
+# bundle 1.6.0 (not on the registry) and raise the version to it.
 cat > "$PROJECT/Packages/manifest.json" <<JSON
 {
   "dependencies": {
     "com.aspid.core.hsm": "file:$PACKAGE_REF",
     "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask#2.5.10",
     "com.unity.inputsystem": "1.14.2",
-    "com.unity.test-framework": "1.6.0",
+    "com.unity.test-framework": "1.4.6",
     "com.unity.modules.imgui": "1.0.0",
     "com.unity.modules.jsonserialize": "1.0.0",
     "com.unity.modules.ui": "1.0.0",
