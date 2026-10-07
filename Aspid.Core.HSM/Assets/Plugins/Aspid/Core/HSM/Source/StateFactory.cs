@@ -6,15 +6,19 @@ using System.Reflection;
 namespace Aspid.Core.HSM
 {
     /// <summary>
-    /// Responsible for creating state instances and building parent-to-leaf chains
-    /// by walking <see cref="IChildState.ParentState"/>. Also manages per-state
-    /// <see cref="IStateScope"/> instances and tracks first-time initialization.
+    /// Responsible for creating state instances, each inside its own <see cref="IStateScope"/>, and for
+    /// resolving the root-to-leaf chain of state types declared by <see cref="IChildState{T}"/>.
+    /// Also tracks first-time initialization.
     /// </summary>
+    /// <remarks>
+    /// A state is created only right before it is entered: by then every ancestor has been entered and
+    /// owns an active scope, so the state's scope is created as a child of its parent's scope and the state
+    /// itself is resolved from it (<see cref="CreateStateInternal"/>). Dependencies a parent registers in its
+    /// scope are therefore visible to the constructors of its descendants.
+    /// </remarks>
     public abstract class StateFactory
     {
         private readonly HashSet<Type> _initializedStates = new();
-        private readonly List<Type> _typeChainBuffer = new(capacity: 4);
-        private readonly List<IState?> _probedStatesBuffer = new(capacity: 4);
         private readonly Dictionary<Type, Type?> _parentTypeCache = new();
 
         private IStateScope? _rootScope;
@@ -22,101 +26,36 @@ namespace Aspid.Core.HSM
         private readonly Dictionary<Type, IStateScope> _cachedScopes = new();
 
         /// <summary>
-        /// Builds the full root-to-leaf state chain for <typeparamref name="TState"/>,
-        /// reusing the longest prefix of <paramref name="activeStates"/> whose types match the new chain
-        /// position by position from the root. Only the states below that shared prefix are created.
+        /// Clears <paramref name="destination"/> and fills it with the root-to-leaf chain of state types
+        /// ending in <paramref name="leafType"/>, following <see cref="IChildState{T}"/> without creating any state.
         /// </summary>
-        /// <remarks>
-        /// The chain of types is resolved first — from <see cref="IChildState{T}"/> without instantiating
-        /// the state, or from <see cref="IChildState.ParentState"/> of a created instance when the state
-        /// implements only the non-generic <see cref="IChildState"/> — and only then compared with the active
-        /// chain. Comparing from the root keeps shared ancestors alive when the old and new leaves sit at
-        /// different depths, and lets a change to an ancestor of the current leaf exit only its descendants.
-        /// </remarks>
-        /// <typeparam name="TState">The target leaf state type.</typeparam>
-        /// <param name="activeStates">The currently active state chain for reuse comparison.</param>
-        /// <returns>
-        /// A newly allocated list holding the state chain ordered root-to-leaf. The factory keeps no
-        /// reference to it, so the caller may hold it across further factory calls. Use
-        /// <see cref="CreateState(Type, IReadOnlyList{IState}, List{IState})"/> to fill a pooled list instead.
-        /// </returns>
-        public IReadOnlyList<IState> CreateState<TState>(IReadOnlyList<IState> activeStates)
-            where TState : IState
-        {
-            var chain = new List<IState>(capacity: 4);
-            CreateState(typeof(TState), activeStates, chain);
-            return chain;
-        }
-
-        /// <inheritdoc cref="CreateState{TState}(IReadOnlyList{IState})"/>
         /// <param name="leafType">The target leaf state type.</param>
-        /// <param name="activeStates">The currently active state chain for reuse comparison.</param>
-        public IReadOnlyList<IState> CreateState(Type leafType, IReadOnlyList<IState> activeStates)
+        /// <param name="destination">The list to fill. Cleared before use.</param>
+        /// <exception cref="InvalidOperationException">
+        /// A state in the chain implements <see cref="IChildState"/> without <see cref="IChildState{T}"/>.
+        /// </exception>
+        public void BuildTypeChain(Type leafType, List<Type> destination)
         {
-            var chain = new List<IState>(capacity: 4);
-            CreateState(leafType, activeStates, chain);
-            return chain;
+            destination.Clear();
+
+            for (Type? type = leafType; type is not null; type = GetParentType(type))
+                destination.Add(type);
+
+            destination.Reverse();
         }
 
         /// <summary>
-        /// Allocation-free variant of <see cref="CreateState{TState}(IReadOnlyList{IState})"/> that clears
-        /// <paramref name="destination"/> and fills it with the root-to-leaf chain.
+        /// Returns the parent state type <paramref name="stateType"/> declares through
+        /// <see cref="IChildState{T}"/>, or <c>null</c> for a root state.
         /// </summary>
-        /// <remarks>
-        /// The factory holds no reference to <paramref name="destination"/> beyond this call, so a caller that
-        /// re-enters the factory while still iterating a previously filled list is safe as long as it passes a
-        /// different list each time. <c>StateMachineBase</c> rents one per in-flight transition for exactly this reason.
-        /// </remarks>
-        /// <param name="leafType">The target leaf state type.</param>
-        /// <param name="activeStates">The currently active state chain for reuse comparison.</param>
-        /// <param name="destination">The list to fill. Cleared before use.</param>
-        public void CreateState(Type leafType, IReadOnlyList<IState> activeStates, List<IState> destination)
+        /// <param name="stateType">The state type to inspect. Not instantiated.</param>
+        /// <exception cref="InvalidOperationException">
+        /// <paramref name="stateType"/> implements <see cref="IChildState"/> without <see cref="IChildState{T}"/>.
+        /// </exception>
+        public Type? GetParentType(Type stateType)
         {
-            destination.Clear();
-            _typeChainBuffer.Clear();
-            _probedStatesBuffer.Clear();
-
-            BuildTypeChain(leafType);
-
-            var sharedCount = 0;
-            var maxShared = Math.Min(activeStates.Count, _typeChainBuffer.Count);
-
-            while (sharedCount < maxShared && activeStates[sharedCount].GetType() == _typeChainBuffer[sharedCount])
-                sharedCount++;
-
-            for (var i = 0; i < _typeChainBuffer.Count; i++)
-            {
-                var state = i < sharedCount
-                    ? activeStates[i]
-                    : _probedStatesBuffer[i] ?? CreateStateInternal(_typeChainBuffer[i]);
-
-                destination.Add(state);
-            }
-
-            _probedStatesBuffer.Clear();
-        }
-
-        private void BuildTypeChain(Type type)
-        {
-            IState? probedState = null;
-
-            if (!TryGetParentType(type, out var parentType))
-            {
-                probedState = CreateStateInternal(type);
-                parentType = (probedState as IChildState)?.ParentState;
-            }
-
-            if (parentType is not null)
-                BuildTypeChain(parentType);
-
-            _typeChainBuffer.Add(type);
-            _probedStatesBuffer.Add(probedState);
-        }
-
-        private bool TryGetParentType(Type stateType, out Type? parentType)
-        {
-            if (_parentTypeCache.TryGetValue(stateType, out parentType))
-                return true;
+            if (_parentTypeCache.TryGetValue(stateType, out var parentType))
+                return parentType;
 
             if (typeof(IChildState).IsAssignableFrom(stateType))
             {
@@ -126,18 +65,45 @@ namespace Aspid.Core.HSM
                         continue;
 
                     parentType = contract.GetGenericArguments()[0];
-                    _parentTypeCache[stateType] = parentType;
-                    return true;
+                    break;
                 }
 
-                // Only the non-generic IChildState is implemented: the parent is known to the instance alone.
-                parentType = null;
-                return false;
+                // The parent must be known from the type alone: a state is created inside its parent's scope,
+                // so reading the parent off an instance would mean creating the state before its scope exists.
+                if (parentType is null)
+                    throw new InvalidOperationException(
+                        $"{stateType} implements {nameof(IChildState)} without {nameof(IChildState)}<TParent>. " +
+                        $"Declare the parent by implementing {nameof(IChildState)}<TParent>.");
             }
 
-            parentType = null;
-            _parentTypeCache[stateType] = null;
-            return true;
+            _parentTypeCache[stateType] = parentType;
+            return parentType;
+        }
+
+        /// <summary>
+        /// Creates a state of <paramref name="stateType"/> inside its own scope. The scope is activated first —
+        /// a child of the nearest active ancestor's scope, or reused when the state is
+        /// <see cref="ScopeLifetime.Cached"/> — and then passed to <see cref="CreateStateInternal"/>.
+        /// </summary>
+        /// <remarks>
+        /// Call it only once the ancestors of <paramref name="stateType"/> are active. The state is not marked
+        /// initialized; <see cref="Release"/> undoes the scope activation. If creation throws, the scope is
+        /// released here and the exception propagates.
+        /// </remarks>
+        /// <param name="stateType">The state or extension type to create.</param>
+        public IState CreateState(Type stateType)
+        {
+            var scope = _rootScope is not null ? ActivateScope(stateType) : null;
+
+            try
+            {
+                return CreateStateInternal(stateType, scope);
+            }
+            catch
+            {
+                ReleaseScope(stateType);
+                throw;
+            }
         }
 
         /// <summary>
@@ -159,34 +125,26 @@ namespace Aspid.Core.HSM
             GetScope(typeof(TState));
 
         /// <summary>
-        /// Marks a state as initialized. On first initialization, calls <see cref="OnInitializeState(IState)"/>
-        /// and activates the state's <see cref="IStateScope"/> if a root scope has been set.
+        /// Marks a state as initialized. On first initialization, calls <see cref="OnInitializeState(IState)"/>.
         /// </summary>
         /// <param name="state">The state instance to mark as initialized.</param>
         public void MarkInitialized(IState state)
         {
-            var stateType = state.GetType();
-            var firstTime = _initializedStates.Add(stateType);
-
-            if (firstTime)
+            if (_initializedStates.Add(state.GetType()))
                 OnInitializeState(state);
-
-            if (_rootScope != null)
-                ActivateScope(stateType, state);
         }
 
         /// <summary>
-        /// Creates a new state instance without adding it to the chain or marking it initialized.
-        /// Used internally for extension states.
-        /// </summary>
-        /// <param name="type">The state type to instantiate.</param>
-        public IState CreateInstance(Type type) => CreateStateInternal(type);
-
-        /// <summary>
-        /// Instantiates a state of the given type. Implement with your DI container or <c>Activator.CreateInstance</c>.
+        /// Instantiates a state of the given type. Implement with your DI container — resolving from
+        /// <paramref name="scope"/> gives the state access to everything its ancestors registered in their
+        /// scopes — or with <c>Activator.CreateInstance</c>.
         /// </summary>
         /// <param name="type">The state type to create.</param>
-        protected abstract IState CreateStateInternal(Type type);
+        /// <param name="scope">
+        /// The state's own scope, already active. <c>null</c> when no root scope has been set, or when
+        /// <see cref="CreateScopeForState"/> returned <c>null</c> for this state.
+        /// </param>
+        protected abstract IState CreateStateInternal(Type type, IStateScope? scope);
 
         /// <summary>
         /// Called the first time a state type is initialized. Override to perform one-time setup.
@@ -204,24 +162,14 @@ namespace Aspid.Core.HSM
             if (state is EmptyState) return;
 
             var stateType = state.GetType();
-            var isCached = GetScopeLifetime(stateType) == ScopeLifetime.Cached;
 
             // Cached states keep their scope AND their initialized flag on re-entry, so the one-time
             // OnInitializeState hook stays truly one-time. Transient states are fully reset.
-            if (!isCached)
+            if (GetScopeLifetime(stateType) != ScopeLifetime.Cached)
                 _initializedStates.Remove(stateType);
 
             ReleaseInternal(state);
-
-            if (_activeScopes.TryGetValue(stateType, out var scope))
-            {
-                _activeScopes.Remove(stateType);
-
-                if (isCached)
-                    _cachedScopes[stateType] = scope;
-                else
-                    scope.Dispose();
-            }
+            ReleaseScope(stateType);
         }
 
         /// <summary>
@@ -254,29 +202,47 @@ namespace Aspid.Core.HSM
             _cachedScopes.Clear();
         }
 
-        private void ActivateScope(Type stateType, IState state)
+        private IStateScope? ActivateScope(Type stateType)
         {
-            if (_activeScopes.ContainsKey(stateType))
-                return;
+            if (_activeScopes.TryGetValue(stateType, out var activeScope))
+                return activeScope;
 
             if (_cachedScopes.TryGetValue(stateType, out var cachedScope))
             {
                 _cachedScopes.Remove(stateType);
                 _activeScopes[stateType] = cachedScope;
-                return;
+                return cachedScope;
             }
 
-            var parentScope = ResolveParentScope(state);
-            var newScope = CreateScopeForState(stateType, parentScope);
+            var newScope = CreateScopeForState(stateType, ResolveParentScope(stateType));
             if (newScope != null)
                 _activeScopes[stateType] = newScope;
+
+            return newScope;
         }
 
-        private IStateScope? ResolveParentScope(IState state)
+        private void ReleaseScope(Type stateType)
         {
-            if (state is IChildState childState &&
-                _activeScopes.TryGetValue(childState.ParentState, out var parentStateScope))
-                return parentStateScope;
+            if (!_activeScopes.TryGetValue(stateType, out var scope))
+                return;
+
+            _activeScopes.Remove(stateType);
+
+            if (GetScopeLifetime(stateType) == ScopeLifetime.Cached)
+                _cachedScopes[stateType] = scope;
+            else
+                scope.Dispose();
+        }
+
+        // The nearest ancestor with an active scope: an ancestor for which CreateScopeForState returned null
+        // is skipped rather than cutting its descendants off the hierarchy.
+        private IStateScope? ResolveParentScope(Type stateType)
+        {
+            for (var parentType = GetParentType(stateType); parentType is not null; parentType = GetParentType(parentType))
+            {
+                if (_activeScopes.TryGetValue(parentType, out var parentScope))
+                    return parentScope;
+            }
 
             return _rootScope;
         }

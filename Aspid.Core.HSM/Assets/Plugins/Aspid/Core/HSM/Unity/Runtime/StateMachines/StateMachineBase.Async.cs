@@ -87,11 +87,11 @@ namespace Aspid.Core.HSM
             {
                 // Rented per in-flight transition: the chain is read across awaits, so a buffer shared
                 // with the factory or with another transition would be rewritten underneath this loop.
-                var newChain = RentChainBuffer();
+                var newChain = RentTypeChainBuffer();
                 _isChangingStateAsync = true;
                 try
                 {
-                    _stateFactory.CreateState(stateType, _currentStates, newChain);
+                    _stateFactory.BuildTypeChain(stateType, newChain);
                     var divergeIndex = FindDivergeIndex(newChain);
 
                     for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
@@ -103,7 +103,7 @@ namespace Aspid.Core.HSM
                     for (var i = divergeIndex; i < newChain.Count; i++)
                     {
                         token.ThrowIfCancellationRequested();
-                        var state = newChain[i];
+                        var state = _stateFactory.CreateState(newChain[i]);
                         _currentStates.Add(state);
                         await EnterStateAsync(state, token);
                     }
@@ -111,7 +111,7 @@ namespace Aspid.Core.HSM
                 finally
                 {
                     _isChangingStateAsync = false;
-                    ReturnChainBuffer(newChain);
+                    ReturnTypeChainBuffer(newChain);
                 }
             }
             OnChangedState();
@@ -120,6 +120,8 @@ namespace Aspid.Core.HSM
 
         private async UniTask ExitStateAsync(IState state, CancellationToken cancellationToken)
         {
+            DetachExtensionsBoundTo(state);
+
             OnExitingState(state);
             {
                 if (state is IAsyncExitController asyncExit)

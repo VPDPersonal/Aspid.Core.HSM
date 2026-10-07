@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 // ReSharper disable once CheckNamespace
@@ -21,7 +22,13 @@ namespace Aspid.Core.HSM
                     return;
             }
 
-            var extension = (IExtensionState)_stateFactory.CreateInstance(typeof(T));
+            // An extension that declares a parent through IChildState<TParent> lives in a child of that
+            // parent's scope, so it can attach only while the parent is active.
+            var parentType = _stateFactory.GetParentType(typeof(T));
+            if (parentType is not null && IndexOfActiveState(parentType) < 0)
+                return;
+
+            var extension = (IExtensionState)_stateFactory.CreateState(typeof(T));
             var leafState = _currentStates[^1];
 
             if (!extension.CanAttachTo(leafState))
@@ -60,6 +67,27 @@ namespace Aspid.Core.HSM
             extension.Exit();
             _stateFactory.Release(extension);
             _activeExtensions.RemoveAt(index);
+        }
+
+        private void DetachExtensionsBoundTo(IState state)
+        {
+            var stateType = state.GetType();
+            for (int i = _activeExtensions.Count - 1; i >= 0; i--)
+            {
+                if (_stateFactory.GetParentType(_activeExtensions[i].GetType()) == stateType)
+                    DetachExtensionAt(i);
+            }
+        }
+
+        private int IndexOfActiveState(Type stateType)
+        {
+            for (int i = 0; i < _currentStates.Count; i++)
+            {
+                if (_currentStates[i].GetType() == stateType)
+                    return i;
+            }
+
+            return -1;
         }
 
         private void AutoDetachIncompatibleExtensions()

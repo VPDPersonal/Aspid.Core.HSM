@@ -253,9 +253,7 @@ namespace Aspid.Core.HSM
         /// <returns>The transitions found along the path, or <c>null</c> if none were.</returns>
         private List<ITransition>? ResolveTransitionChain(Type targetType, out bool isComplete)
         {
-            // Build the target type chain by walking IChildState.ParentState
-            _targetTypeChainBuffer.Clear();
-            BuildTypeChain(targetType, _targetTypeChainBuffer);
+            _stateFactory.BuildTypeChain(targetType, _targetTypeChainBuffer);
 
             // Find diverge index by comparing current chain types with target chain types
             var currentCount = _currentStates.Count;
@@ -299,35 +297,6 @@ namespace Aspid.Core.HSM
 
             isComplete = foundSegments == requiredSegments;
             return chain;
-        }
-
-        private static void BuildTypeChain(Type leafType, List<Type> result)
-        {
-            if (TryGetParentStateType(leafType, out var parentType))
-                BuildTypeChain(parentType, result);
-
-            result.Add(leafType);
-        }
-
-        /// <summary>
-        /// Reads a state's parent type from its <see cref="IChildState{T}"/> interface without
-        /// instantiating it, so DI states (no public parameterless constructor) resolve correctly
-        /// and no throwaway instances / constructor side effects are produced.
-        /// </summary>
-        private static bool TryGetParentStateType(Type stateType, out Type parentType)
-        {
-            foreach (var contract in stateType.GetInterfaces())
-            {
-                if (contract.IsGenericType &&
-                    contract.GetGenericTypeDefinition() == typeof(IChildState<>))
-                {
-                    parentType = contract.GetGenericArguments()[0];
-                    return true;
-                }
-            }
-
-            parentType = null!;
-            return false;
         }
 
         #endregion

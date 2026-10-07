@@ -18,7 +18,7 @@ namespace Aspid.Core.HSM
         private readonly StateFactory _stateFactory;
         private readonly List<IState> _currentStates = new(capacity: 1);
 
-        private readonly Stack<List<IState>> _chainBufferPool = new();
+        private readonly Stack<List<Type>> _typeChainBufferPool = new();
         private readonly Queue<PendingRequest> _pendingRequests = new();
         private bool _isChangingState;
         private bool _isTicking;
@@ -151,10 +151,10 @@ namespace Aspid.Core.HSM
             {
                 // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
                 // which are free to re-enter the factory. A shared buffer would be rewritten underneath us.
-                var newChain = RentChainBuffer();
+                var newChain = RentTypeChainBuffer();
                 try
                 {
-                    _stateFactory.CreateState(stateType, _currentStates, newChain);
+                    _stateFactory.BuildTypeChain(stateType, newChain);
                     var divergeIndex = FindDivergeIndex(newChain);
 
                     for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
@@ -163,28 +163,31 @@ namespace Aspid.Core.HSM
                         _currentStates.RemoveAt(i);
                     }
 
+                    // Each state is created only once its parent has been entered, so it is resolved from
+                    // its own scope, a child of the parent's.
                     for (var i = divergeIndex; i < newChain.Count; i++)
                     {
-                        var state = newChain[i];
+                        var state = _stateFactory.CreateState(newChain[i]);
                         _currentStates.Add(state);
                         EnterState(state);
                     }
                 }
                 finally
                 {
-                    ReturnChainBuffer(newChain);
+                    ReturnTypeChainBuffer(newChain);
                 }
             }
             OnChangedState();
             AutoDetachIncompatibleExtensions();
         }
 
-        private int FindDivergeIndex(IReadOnlyList<IState> newChain)
+        // The active states are kept for the longest prefix whose types match the new chain from the root.
+        private int FindDivergeIndex(List<Type> newChain)
         {
             var commonLength = Math.Min(_currentStates.Count, newChain.Count);
             for (var i = 0; i < commonLength; i++)
             {
-                if (!ReferenceEquals(_currentStates[i], newChain[i]))
+                if (_currentStates[i].GetType() != newChain[i])
                     return i;
             }
 
@@ -278,19 +281,22 @@ namespace Aspid.Core.HSM
             }
         }
 
-        private List<IState> RentChainBuffer() =>
-            _chainBufferPool.Count > 0 ? _chainBufferPool.Pop() : new List<IState>(capacity: 4);
+        private List<Type> RentTypeChainBuffer() =>
+            _typeChainBufferPool.Count > 0 ? _typeChainBufferPool.Pop() : new List<Type>(capacity: 4);
 
-        private void ReturnChainBuffer(List<IState> buffer)
+        private void ReturnTypeChainBuffer(List<Type> buffer)
         {
             buffer.Clear();
-            _chainBufferPool.Push(buffer);
+            _typeChainBufferPool.Push(buffer);
         }
         #endregion
 
         #region Exit
         private void ExitState(IState state)
         {
+            // Extensions bound to this state live in a child of its scope, which Release is about to dispose.
+            DetachExtensionsBoundTo(state);
+
             OnExitingState(state);
 #if ENABLE_PROFILER
             using (GetMarkers(state).Exit.Auto())
