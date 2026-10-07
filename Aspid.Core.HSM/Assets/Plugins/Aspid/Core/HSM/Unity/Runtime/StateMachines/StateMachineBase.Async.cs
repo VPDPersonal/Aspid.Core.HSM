@@ -40,6 +40,10 @@ namespace Aspid.Core.HSM
         /// <exception cref="InvalidOperationException">
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
         /// </exception>
+        /// <exception cref="AggregateException">
+        /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
+        /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// </exception>
         public UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState =>
             ChangeStateAsync(typeof(TState), cancellationToken);
@@ -169,15 +173,18 @@ namespace Aspid.Core.HSM
             CloseFailedChange(cause, failures);
         }
 
-        // An exit, once started, always completes: IState.Exit, OnExitedState and Release run even when the bound
-        // extensions' detach, OnExitingState or the exit controllers are cancelled or throw. The callbacks that
-        // did not get to run are not called again.
+        // An exit, once started, always completes: IState.Exit and Release run even when the bound extensions'
+        // detach, OnExitingState or the exit controllers are cancelled or throw. The callbacks that did not get to
+        // run are not called again. OnExitedState runs only if OnExitingState did, so the hooks stay paired.
         private async UniTask ExitStateAsync(IState state, CancellationToken cancellationToken)
         {
+            var isExiting = false;
             var isExited = false;
             try
             {
                 DetachExtensionsBoundTo(state);
+
+                isExiting = true;
                 OnExitingState(state);
 
                 if (state is IAsyncExitController asyncExit)
@@ -220,8 +227,15 @@ namespace Aspid.Core.HSM
                 }
                 finally
                 {
-                    try { OnExitedState(state); }
-                    finally { _stateFactory.Release(state); }
+                    try
+                    {
+                        if (isExiting)
+                            OnExitedState(state);
+                    }
+                    finally
+                    {
+                        _stateFactory.Release(state);
+                    }
                 }
             }
         }

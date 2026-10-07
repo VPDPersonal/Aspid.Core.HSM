@@ -107,11 +107,7 @@ namespace Aspid.Core.HSM
                 }
             }
 
-            if (failures is { Count: 1 })
-                ExceptionDispatchInfo.Capture(failures[0]).Throw();
-
-            if (failures is not null)
-                throw new AggregateException(failures);
+            ThrowFailures(failures);
         }
 
         private int IndexOfActiveState(Type stateType)
@@ -125,14 +121,37 @@ namespace Aspid.Core.HSM
             return -1;
         }
 
+        // Every incompatible extension is detached even if one of them throws, as in DetachExtensionsBoundTo.
         private void AutoDetachIncompatibleExtensions()
         {
             var leafState = _currentStates[^1];
+            List<Exception>? failures = null;
             for (int i = _activeExtensions.Count - 1; i >= 0; i--)
             {
-                if (!_activeExtensions[i].CanAttachTo(leafState))
-                    DetachExtensionAt(i);
+                try
+                {
+                    if (!_activeExtensions[i].CanAttachTo(leafState))
+                        DetachExtensionAt(i);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= new List<Exception>()).Add(exception);
+                }
             }
+
+            ThrowFailures(failures);
+        }
+
+        // A single failure is rethrown as it is, with its stack trace; several go out together.
+        private static void ThrowFailures(List<Exception>? failures)
+        {
+            if (failures is null)
+                return;
+
+            if (failures.Count == 1)
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+
+            throw new AggregateException(failures);
         }
     }
 }

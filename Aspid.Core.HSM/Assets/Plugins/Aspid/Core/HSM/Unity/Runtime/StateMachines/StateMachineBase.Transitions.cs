@@ -148,6 +148,10 @@ namespace Aspid.Core.HSM
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
         /// Or <see cref="StrictTransitions"/> is enabled and no registered transition covers the whole path.
         /// </exception>
+        /// <exception cref="AggregateException">
+        /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
+        /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// </exception>
         public UniTask TransitionToAsync<TTarget>(CancellationToken ct = default)
             where TTarget : IState =>
             TransitionToAsync(typeof(TTarget), ct);
@@ -219,6 +223,10 @@ namespace Aspid.Core.HSM
         /// <exception cref="InvalidOperationException">
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
         /// Or the transition type is not registered.
+        /// </exception>
+        /// <exception cref="AggregateException">
+        /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
+        /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
         /// </exception>
         public UniTask TransitionViaAsync<TTransition>(CancellationToken ct = default)
             where TTransition : ITransition =>

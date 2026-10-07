@@ -64,6 +64,27 @@ public sealed class RbLeafOnlyExtension : RbThrowingExtension
     public override bool CanAttachTo(IState hostState) => hostState is not RbRoot;
 }
 
+public sealed class RbSecondLeafOnlyExtension : RbThrowingExtension
+{
+    public override bool CanAttachTo(IState hostState) => hostState is not RbRoot;
+}
+
+/// <summary>Records the exit hooks of <see cref="RbFamily"/> to check that they stay paired.</summary>
+public sealed class RbHookedStateMachine(StateFactory factory, List<string> log) : StateMachineBase(factory)
+{
+    protected override void OnExitingState(IState state)
+    {
+        if (state is RbFamily)
+            log.Add("exiting " + state.GetType().Name);
+    }
+
+    protected override void OnExitedState(IState state)
+    {
+        if (state is RbFamily)
+            log.Add("exited " + state.GetType().Name);
+    }
+}
+
 /// <summary>Leaf whose async enter blocks until completed, cancelled or failed from the test.</summary>
 public sealed class RbBlockingLeaf : LoggedState, IChildState<RbFamily>, IAsyncEnterController, IAsyncExitController
 {
@@ -115,6 +136,7 @@ public class AsyncRollbackTests
     private readonly RbLeaf _leaf = new();
     private readonly RbFamilyExtension _familyExtension = new();
     private readonly RbLeafOnlyExtension _leafOnlyExtension = new();
+    private readonly RbSecondLeafOnlyExtension _secondLeafOnlyExtension = new();
     private readonly TestStateFactory _factory = new();
     private readonly TestScope _rootScope = new();
     private readonly TestableStateMachine _sm;
@@ -132,6 +154,7 @@ public class AsyncRollbackTests
         _factory.RegisterState(() => _leaf);
         _factory.RegisterState(() => _familyExtension);
         _factory.RegisterState(() => _leafOnlyExtension);
+        _factory.RegisterState(() => _secondLeafOnlyExtension);
         _factory.SetRootScope(_rootScope);
 
         _sm = new TestableStateMachine(_factory);
@@ -324,5 +347,40 @@ public class AsyncRollbackTests
         Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerExceptions[0]);
         Assert.Equal("detach failed", exception.InnerExceptions[1].Message);
         Assert.Empty(_sm.ActiveExtensions);
+    }
+
+    [Fact]
+    public async Task Throwing_detach_still_lets_the_other_incompatible_extensions_detach()
+    {
+        _sm.ChangeState<RbOldLeaf>();
+        _sm.AttachExtension<RbLeafOnlyExtension>();
+        _sm.AttachExtension<RbSecondLeafOnlyExtension>();
+        _secondLeafOnlyExtension.ThrowOnDetached = true;
+        using var cts = new CancellationTokenSource();
+
+        var task = _sm.ChangeStateAsync<RbBlockingLeaf>(cts.Token);
+        cts.Cancel();
+
+        // The throwing extension is detached first, from the tail; the one before it must still go.
+        var exception = await Assert.ThrowsAsync<AggregateException>(async () => await task);
+        Assert.Equal("detach failed", exception.InnerExceptions[1].Message);
+        Assert.Empty(_sm.ActiveExtensions);
+    }
+
+    [Fact]
+    public async Task Throwing_bound_detach_skips_the_exit_hooks_together()
+    {
+        var hookLog = new List<string>();
+        var sm = new RbHookedStateMachine(_factory, hookLog);
+        sm.ChangeState<RbLeaf>();
+        sm.AttachExtension<RbFamilyExtension>();
+        _familyExtension.ThrowOnDetached = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await sm.ChangeStateAsync<RbOldLeaf>());
+
+        // The detach threw before OnExitingState, so OnExitedState is not raised either.
+        Assert.Empty(hookLog);
+        Assert.Equal(1, _family.ExitCalled);
+        Assert.Contains(_family, _factory.ReleasedStates);
     }
 }
