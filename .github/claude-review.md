@@ -6,7 +6,8 @@ the automatic review and the `@claude` replies. Edit the rules here, in one plac
 ## Always
 
 - Follow CLAUDE.md: it holds the layout, the HSM architecture and the generator rules.
-- Write replies, code, code comments and commit messages in English. Keep code identifiers as they are.
+- Reply in Russian. Keep code identifiers as they are.
+- Write code, code comments and commit messages in English.
 
 ## When you review a pull request
 
@@ -43,9 +44,14 @@ Format:
 - Start each inline comment with a severity tag:
   - `[blocking]`: the PR must not merge until it is fixed;
   - `[minor]`: an improvement that can wait.
+- Post the main comment last, as a new comment with `gh pr comment`.
+  This applies to a requested review too. Do not put the verdict only into an edit of an earlier comment:
+  an edit does not notify the agent that waits for the verdict.
 - Start the main comment with exactly one verdict line: `Verdict: <N> blocking, <M> minor`.
   An agent reads this line to decide the next step, so keep the format.
   Put at most 2 short sentences after it.
+- Write the verdict line and the severity tags in English, exactly as shown here.
+  Write the rest of each comment in Russian.
 - Do not praise.
 - Do not write the literal trigger phrase (at-sign + "claude") in your comments:
   it starts the workflow again.
