@@ -1,2 +1,6 @@
 .idea
 *.DotSettings.user
+
+# Claude Code: personal settings and app worktrees
+.claude/settings.local.json
+.claude/worktrees/
