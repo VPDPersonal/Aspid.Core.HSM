@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using Xunit;
 
@@ -8,7 +9,7 @@ namespace Aspid.Core.HSM.Generators.Tests.StateMachineTests;
 public class StateMachineAsyncTests
 {
     [Fact]
-    public async UniTask ChangeStateAsync_AwaitsAsyncEnterController()
+    public async Task ChangeStateAsync_AwaitsAsyncEnterController()
     {
         var factory = new TestStateFactory();
         var asyncState = new AsyncEnterTestState();
@@ -27,7 +28,7 @@ public class StateMachineAsyncTests
     }
 
     [Fact]
-    public async UniTask ChangeStateAsync_ReentrantCall_CancelsPrevious()
+    public async Task ChangeStateAsync_ReentrantCall_CancelsPrevious()
     {
         var factory = new TestStateFactory();
         var slowState = new AsyncEnterTestState();
@@ -50,7 +51,7 @@ public class StateMachineAsyncTests
     }
 
     [Fact]
-    public async UniTask ChangeState_Sync_DuringAsyncTransition_Throws()
+    public async Task ChangeState_Sync_DuringAsyncTransition_Throws()
     {
         var factory = new TestStateFactory();
         var asyncState = new AsyncEnterTestState();
@@ -67,7 +68,7 @@ public class StateMachineAsyncTests
     }
 
     [Fact]
-    public async UniTask ChangeStateAsync_FallsBackToSyncEnter_WhenStateOnlyImplementsSyncController()
+    public async Task ChangeStateAsync_FallsBackToSyncEnter_WhenStateOnlyImplementsSyncController()
     {
         var factory = new TestStateFactory();
         var syncCtrlState = new ControllableTestState();
@@ -78,6 +79,36 @@ public class StateMachineAsyncTests
 
         Assert.Equal(1, syncCtrlState.OnEnterCalled);
         Assert.Contains(syncCtrlState, stateMachine.CurrentStates);
+    }
+
+    // Started from inside an enter callback, a transition would await the one it is running in.
+    [Fact]
+    public async Task ChangeStateAsync_FromInsideAnEnterCallback_Throws()
+    {
+        var factory = new TestStateFactory();
+        var redirecting = new RedirectingAsyncEnterState();
+        factory.RegisterState(creator: () => redirecting);
+        factory.RegisterState<SimpleTestState>();
+        var stateMachine = new TestableStateMachine(factory);
+        redirecting.Redirect = () => stateMachine.ChangeStateAsync<SimpleTestState>();
+
+        await stateMachine.ChangeStateAsync<RedirectingAsyncEnterState>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await redirecting.Inner!.Value);
+        Assert.Same(redirecting, Assert.Single(stateMachine.CurrentStates));
+    }
+}
+
+public class RedirectingAsyncEnterState : BaseTestState, IAsyncEnterController
+{
+    public Func<UniTask>? Redirect { get; set; }
+
+    public UniTask? Inner { get; private set; }
+
+    public UniTask OnEnterAsync(CancellationToken cancellationToken)
+    {
+        Inner = Redirect?.Invoke();
+        return UniTask.CompletedTask;
     }
 }
 
