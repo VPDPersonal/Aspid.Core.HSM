@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Aspid.Core.HSM.Generators.Tests.StateMachineTests;
@@ -36,6 +38,13 @@ public class ReplacementTransition : ITransition<SimpleTestState, AnotherTestSta
     public bool CanTransition() => GuardResult;
     public void OnBeforeTransition() => BeforeCount++;
     public void OnAfterTransition() => AfterCount++;
+}
+
+public class ParentToAnotherTransition : ITransition<ParentTestState, AnotherTestState>
+{
+    public int BeforeCount { get; private set; }
+
+    public void OnBeforeTransition() => BeforeCount++;
 }
 
 #endregion
@@ -175,6 +184,75 @@ public class TransitionPipelineTests
         sm.ChangeState<SimpleTestState>();
 
         Assert.Throws<InvalidOperationException>(() => sm.TransitionVia<TestTransition>());
+    }
+
+    // TransitionVia used to run a transition from anywhere, entering its target without checking its source.
+    [Fact]
+    public void TransitionVia_does_nothing_outside_its_source()
+    {
+        var another = new AnotherTestState();
+        var factory = CreateFactory(another: another);
+        var sm = new TestableStateMachine(factory);
+        var transition = new AnotherTransition();
+        sm.RegisterTransition(transition);
+        sm.RegisterTransition(new TestTransition());
+        sm.ChangeState<SimpleTestState>();
+        var chain = sm.CurrentStates.ToArray();
+
+        // AnotherTransition leaves AnotherTestState, but the machine is in SimpleTestState.
+        sm.TransitionVia<AnotherTransition>();
+
+        Assert.Equal(chain, sm.CurrentStates.ToArray());
+        Assert.Equal(0, transition.BeforeCount);
+        Assert.Equal(0, transition.AfterCount);
+    }
+
+    [Fact]
+    public async Task TransitionViaAsync_does_nothing_outside_its_source()
+    {
+        var factory = CreateFactory();
+        var sm = new TestableStateMachine(factory);
+        var transition = new AnotherTransition();
+        sm.RegisterTransition(transition);
+        sm.ChangeState<SimpleTestState>();
+        var chain = sm.CurrentStates.ToArray();
+
+        await sm.TransitionViaAsync<AnotherTransition>();
+
+        Assert.Equal(chain, sm.CurrentStates.ToArray());
+        Assert.Equal(0, transition.BeforeCount);
+    }
+
+    [Fact]
+    public void TransitionVia_runs_from_a_descendant_of_its_source()
+    {
+        var factory = new TestStateFactory();
+        factory.RegisterState<ParentTestState>();
+        factory.RegisterState<ChildTestState>();
+        factory.RegisterState<AnotherTestState>();
+        var sm = new TestableStateMachine(factory);
+        var transition = new ParentToAnotherTransition();
+        sm.RegisterTransition(transition);
+        sm.ChangeState<ChildTestState>();
+
+        sm.TransitionVia<ParentToAnotherTransition>();
+
+        Assert.IsType<AnotherTestState>(Assert.Single(sm.CurrentStates));
+        Assert.Equal(1, transition.BeforeCount);
+    }
+
+    [Fact]
+    public void TransitionVia_outside_its_source_throws_under_strict_transitions()
+    {
+        var factory = CreateFactory();
+        var sm = new GuardedStateMachine(factory) { Strict = true };
+        sm.RegisterTransition(new AnotherTransition());
+        sm.ChangeState<SimpleTestState>();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => sm.TransitionVia<AnotherTransition>());
+
+        Assert.Contains(nameof(AnotherTestState), exception.Message);
+        Assert.IsType<SimpleTestState>(Assert.Single(sm.CurrentStates));
     }
 
     #endregion

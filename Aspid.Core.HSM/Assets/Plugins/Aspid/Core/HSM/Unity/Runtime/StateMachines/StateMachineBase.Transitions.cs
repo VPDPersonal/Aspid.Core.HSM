@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -128,6 +129,9 @@ namespace Aspid.Core.HSM
             var transition = FindTransitionByType(transitionType);
             var currentLeafType = _currentStates[^1].GetType();
 
+            if (!IsSourceActive(transition))
+                return;
+
             if (!IsStateEnabled(transition.TargetState) ||
                 !IsTransitionEnabled(currentLeafType, transition.TargetState) ||
                 !transition.CanTransition())
@@ -251,6 +255,11 @@ namespace Aspid.Core.HSM
             await SupersedeActiveTransitionAsync();
             var currentLeafType = _currentStates[^1].GetType();
 
+            // Checked after the supersede, like the edge guard: the source must be active in the chain that the
+            // superseded transition left, not in the one that was current when this call was made.
+            if (!IsSourceActive(transition))
+                return;
+
             if (!IsTransitionEnabled(currentLeafType, transition.TargetState) ||
                 !transition.CanTransition())
                 return;
@@ -285,6 +294,22 @@ namespace Aspid.Core.HSM
 
             throw new InvalidOperationException(
                 $"Transition of type '{transitionType.Name}' is not registered.");
+        }
+
+        // A transition runs only from its own source. The source counts as active anywhere in the chain: being in
+        // one of its descendants means being in it. Under StrictTransitions a call from elsewhere is an error.
+        private bool IsSourceActive(ITransition transition)
+        {
+            if (IndexOfActiveState(transition.SourceState) >= 0)
+                return true;
+
+            if (StrictTransitions)
+                throw new InvalidOperationException(
+                    $"Transition '{transition.GetType().Name}' leaves '{transition.SourceState.Name}', which is not " +
+                    $"in the active chain (current leaf: '{_currentStates[^1].GetType().Name}'). " +
+                    $"{nameof(StrictTransitions)} is enabled, so a transition may only run from its source state.");
+
+            return false;
         }
 
         private static InvalidOperationException UnregisteredTransition(Type sourceType, Type targetType) =>
