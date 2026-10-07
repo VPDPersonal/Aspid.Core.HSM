@@ -12,3 +12,11 @@
 # Claude Code: personal settings and app worktrees
 .claude/settings.local.json
 .claude/worktrees/
+.DS_Store
+
+# npm install --no-save for scripts/check-skills.mjs
+/node_modules/
+
+# Generated at release by scripts/package-changelog.mjs; only the upm branches carry it.
+/Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/CHANGELOG.md
+/Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/CHANGELOG.md.meta

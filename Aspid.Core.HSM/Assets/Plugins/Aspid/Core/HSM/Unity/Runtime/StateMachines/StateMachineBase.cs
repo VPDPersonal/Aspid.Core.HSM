@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 #if ENABLE_PROFILER
+using System.Text;
 using Unity.Profiling;
 #endif
 
@@ -23,6 +24,10 @@ namespace Aspid.Core.HSM
         private readonly Queue<PendingRequest> _pendingRequests = new();
         private bool _isChangingState;
         private bool _isTicking;
+
+        // Index of the extension the running tick is at, or -1 outside a tick. DetachExtensionAt shifts it
+        // when it removes an extension at or before it, so the tick does not skip the next extension.
+        private int _tickedExtensionIndex = -1;
 
         private CancellationTokenSource? _activeTransitionCts;
 
@@ -71,7 +76,7 @@ namespace Aspid.Core.HSM
             {
                 // Indexed rather than foreach: a controller may still attach or detach an extension, or start
                 // an async transition, and those change the lists mid-tick. An index sees them as they are now:
-                // a state or extension removed before its turn is skipped instead of throwing.
+                // a state or extension removed before its turn is not ticked, and nothing throws.
                 for (var i = 0; i < _currentStates.Count; i++)
                 {
                     var state = _currentStates[i];
@@ -85,9 +90,9 @@ namespace Aspid.Core.HSM
                     }
                 }
 
-                for (var i = 0; i < _activeExtensions.Count; i++)
+                for (_tickedExtensionIndex = 0; _tickedExtensionIndex < _activeExtensions.Count; _tickedExtensionIndex++)
                 {
-                    var extension = _activeExtensions[i];
+                    var extension = _activeExtensions[_tickedExtensionIndex];
                     var controller = extension.GetController<TController>();
                     if (controller is not null && IsControllerEnabled(controller, extension))
                     {
@@ -107,6 +112,7 @@ namespace Aspid.Core.HSM
             finally
             {
                 _isTicking = false;
+                _tickedExtensionIndex = -1;
             }
 
             if (_pendingRequests.Count > 0)
@@ -127,7 +133,16 @@ namespace Aspid.Core.HSM
 
         #region ChangeState
         /// <inheritdoc />
+        /// <remarks>
+        /// A state constructor, <see cref="IState.Exit"/> or <see cref="IState.Enter"/> that throws stops the change
+        /// midway: exited states stay exited, and the chain ends at the last state reached, or at
+        /// <see cref="EmptyState"/> when none is left. <see cref="OnChangedState"/> still runs, then the exception propagates.
+        /// </remarks>
         /// <exception cref="InvalidOperationException">An async transition is already in progress.</exception>
+        /// <exception cref="AggregateException">
+        /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// Or several extensions threw while the change detached them.
+        /// </exception>
         public void ChangeState<TState>()
             where TState : IState =>
             ChangeState(typeof(TState));
@@ -148,38 +163,76 @@ namespace Aspid.Core.HSM
             if (!IsTransitionEnabled(_currentStates[^1].GetType(), stateType))
                 return;
 
+            ChangeStateCore(stateType);
+        }
+
+        // Diffs and swaps the chain with no guard checks: every caller has checked the guards already.
+        private void ChangeStateCore(Type stateType)
+        {
             OnChangingState();
+            // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
+            // which are free to re-enter the factory. A shared buffer would be rewritten underneath us.
+            var newChain = RentTypeChainBuffer();
+            try
             {
-                // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
-                // which are free to re-enter the factory. A shared buffer would be rewritten underneath us.
-                var newChain = RentTypeChainBuffer();
-                try
+                _stateFactory.BuildTypeChain(stateType, newChain);
+                var divergeIndex = FindDivergeIndex(newChain);
+
+                for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
                 {
-                    _stateFactory.BuildTypeChain(stateType, newChain);
-                    var divergeIndex = FindDivergeIndex(newChain);
-
-                    for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
-                    {
-                        ExitState(_currentStates[i]);
-                        _currentStates.RemoveAt(i);
-                    }
-
-                    // Each state is created only once its parent has been entered, so it is resolved from
-                    // its own scope, a child of the parent's.
-                    for (var i = divergeIndex; i < newChain.Count; i++)
-                    {
-                        var state = _stateFactory.CreateState(newChain[i]);
-                        _currentStates.Add(state);
-                        EnterState(state);
-                    }
+                    ExitState(_currentStates[i]);
+                    _currentStates.RemoveAt(i);
                 }
-                finally
+
+                // Each state is created only once its parent has been entered, so it is resolved from
+                // its own scope, a child of the parent's.
+                for (var i = divergeIndex; i < newChain.Count; i++)
                 {
-                    ReturnTypeChainBuffer(newChain);
+                    var state = _stateFactory.CreateState(newChain[i]);
+                    _currentStates.Add(state);
+                    EnterState(state);
                 }
             }
+            catch (Exception cause)
+            {
+                CloseFailedChange(cause);
+                throw;
+            }
+            finally
+            {
+                ReturnTypeChainBuffer(newChain);
+            }
+
             OnChangedState();
             AutoDetachIncompatibleExtensions();
+        }
+
+        // A change that throws midway keeps the states it reached: exited states cannot be entered back.
+        // Close it anyway, so OnChangingState/OnChangedState stay paired and extensions are checked against
+        // the leaf that is really active. An empty chain falls back to EmptyState, as at start, because every
+        // later change and tick reads the leaf. A closing callback that throws must not hide the cause:
+        // its exception joins the failures collected so far, and all go out after the cause.
+        private void CloseFailedChange(Exception cause, List<Exception>? failures = null)
+        {
+            if (_currentStates.Count == 0)
+                _currentStates.Add(new EmptyState());
+
+            try
+            {
+                OnChangedState();
+            }
+            catch (Exception exception)
+            {
+                (failures ??= new List<Exception>()).Add(exception);
+            }
+
+            failures = DetachIncompatibleExtensions(failures);
+
+            if (failures is not null)
+            {
+                failures.Insert(0, cause);
+                throw new AggregateException("A state change failed, and closing it failed as well.", failures);
+            }
         }
 
         // The active states are kept for the longest prefix whose types match the new chain from the root.
@@ -201,7 +254,7 @@ namespace Aspid.Core.HSM
         protected virtual void OnChangingState() { }
 
         /// <summary>
-        /// Called after all state exits and enters have completed.
+        /// Called after the exit/enter sequence ends, also when a state in it throws.
         /// </summary>
         protected virtual void OnChangedState() { }
         #endregion
@@ -400,18 +453,54 @@ namespace Aspid.Core.HSM
         }
 
         // Full name with readable generic arguments, so two closings of one generic state get separate markers.
+        // Nested types are joined with '.', and each segment keeps its own arguments: NS.Outer<System.Int32>.Inner.
+        // ControllerGroupBody.GetMarkerTypeName names controller markers in the same format, tuples included.
         private static string GetMarkerTypeName(Type type)
         {
-            if (!type.IsGenericType)
-                return type.FullName ?? type.Name;
+            if (type.IsArray)
+                return $"{GetMarkerTypeName(type.GetElementType()!)}[{new string(',', type.GetArrayRank() - 1)}]";
 
-            var definitionName = type.GetGenericTypeDefinition().FullName ?? type.Name;
-            var tickIndex = definitionName.IndexOf('`');
-            if (tickIndex >= 0)
-                definitionName = definitionName.Substring(0, tickIndex);
+            if (type.IsGenericParameter)
+                return type.Name;
 
-            var arguments = Array.ConvertAll(type.GetGenericArguments(), GetMarkerTypeName);
-            return $"{definitionName}<{string.Join(", ", arguments)}>";
+            var builder = new StringBuilder();
+            if (!string.IsNullOrEmpty(type.Namespace))
+                builder.Append(type.Namespace).Append('.');
+
+            AppendMarkerTypeSegment(builder, type, type.GetGenericArguments());
+            return builder.ToString();
+        }
+
+        // A nested type lists the arguments of its declaring types too. Each segment takes only the arguments
+        // its own arity adds, so Outer<A>.Inner<B> does not collapse into Outer<A, B>. Returns the arguments used.
+        private static int AppendMarkerTypeSegment(StringBuilder builder, Type segment, Type[] arguments)
+        {
+            var start = 0;
+            if (segment.DeclaringType is { } declaringType)
+            {
+                start = AppendMarkerTypeSegment(builder, declaringType, arguments);
+                builder.Append('.');
+            }
+
+            var name = segment.Name;
+            var tickIndex = name.IndexOf('`');
+            builder.Append(name, 0, tickIndex >= 0 ? tickIndex : name.Length);
+
+            var end = segment.GetGenericArguments().Length;
+            if (end > start)
+            {
+                builder.Append('<');
+                for (var i = start; i < end; i++)
+                {
+                    if (i > start)
+                        builder.Append(", ");
+
+                    builder.Append(GetMarkerTypeName(arguments[i]));
+                }
+                builder.Append('>');
+            }
+
+            return end;
         }
 
         private sealed class StateMarkers

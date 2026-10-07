@@ -26,6 +26,10 @@ namespace Aspid.Core.HSM
         private readonly Dictionary<Type, IStateScope> _activeScopes = new();
         private readonly Dictionary<Type, IStateScope> _cachedScopes = new();
 
+        // The parent scope each active or cached scope was created under. A cached scope outlives its state,
+        // but not its parent: ReleaseScope disposes it together with the parent scope it was created under.
+        private readonly Dictionary<Type, IStateScope?> _parentScopes = new();
+
         /// <summary>
         /// Clears <paramref name="destination"/> and fills it with the root-to-leaf chain of state types
         /// ending in <paramref name="leafType"/>, following <see cref="IChildState{T}"/> without creating any state.
@@ -201,6 +205,7 @@ namespace Aspid.Core.HSM
             foreach (var scope in _cachedScopes.Values)
                 scope.Dispose();
             _cachedScopes.Clear();
+            _parentScopes.Clear();
         }
 
         private IStateScope? ActivateScope(Type stateType)
@@ -215,9 +220,13 @@ namespace Aspid.Core.HSM
                 return cachedScope;
             }
 
-            var newScope = CreateScopeForState(stateType, ResolveParentScope(stateType));
+            var parentScope = ResolveParentScope(stateType);
+            var newScope = CreateScopeForState(stateType, parentScope);
             if (newScope != null)
+            {
                 _activeScopes[stateType] = newScope;
+                _parentScopes[stateType] = parentScope;
+            }
 
             return newScope;
         }
@@ -230,9 +239,39 @@ namespace Aspid.Core.HSM
             _activeScopes.Remove(stateType);
 
             if (GetScopeLifetime(stateType) == ScopeLifetime.Cached)
+            {
                 _cachedScopes[stateType] = scope;
-            else
-                scope.Dispose();
+                return;
+            }
+
+            _parentScopes.Remove(stateType);
+            DisposeCachedScopesUnder(scope);
+            scope.Dispose();
+        }
+
+        // A cached scope under a disposed parent would hand its next state a dead container, and that state
+        // would not see what the parent's next scope registers. Children go first, before their parent.
+        private void DisposeCachedScopesUnder(IStateScope parentScope)
+        {
+            List<Type>? orphanTypes = null;
+            foreach (var pair in _cachedScopes)
+            {
+                if (_parentScopes.TryGetValue(pair.Key, out var scopeParent) && ReferenceEquals(scopeParent, parentScope))
+                    (orphanTypes ??= new List<Type>()).Add(pair.Key);
+            }
+
+            if (orphanTypes is null)
+                return;
+
+            foreach (var orphanType in orphanTypes)
+            {
+                var orphan = _cachedScopes[orphanType];
+                _cachedScopes.Remove(orphanType);
+                _parentScopes.Remove(orphanType);
+
+                DisposeCachedScopesUnder(orphan);
+                orphan.Dispose();
+            }
         }
 
         // The nearest ancestor with an active scope: an ancestor for which CreateScopeForState returned null

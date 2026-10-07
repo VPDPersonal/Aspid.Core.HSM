@@ -4,7 +4,8 @@
     "references": [
         "Aspid.Core.HSM",
         "Aspid.Core.HSM.Unity",
-        "UniTask"
+        "UniTask",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

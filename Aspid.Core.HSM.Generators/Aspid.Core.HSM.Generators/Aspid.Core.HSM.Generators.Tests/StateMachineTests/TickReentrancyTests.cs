@@ -204,6 +204,8 @@ public class TickReentrancyTests
         _sm.CallUpdate(0.016f);
 
         Assert.Equal(1, _extension.TickCount);
+        // The detach shifts the list; the extension after the detached one must still get its tick.
+        Assert.Equal(1, _secondExtension.TickCount);
         Assert.Equal(1, _extension.ExitCalled);
         Assert.Equal(new IExtensionState[] { _secondExtension }, _sm.ActiveExtensions.ToArray());
     }

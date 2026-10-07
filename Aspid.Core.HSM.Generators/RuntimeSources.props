@@ -1,0 +1,19 @@
+<Project>
+
+    <!-- The runtime sources of the Unity package, compiled outside Unity by the Tests, Sample and Runtime
+         projects. Globs, so a new runtime file is compiled everywhere without a csproj edit.
+         MonoStateMachine* derive from MonoBehaviour: only the Sample, which references UnityEngine, adds them.
+         A new runtime file that uses UnityEngine fails the Tests and "Runtime as C# 9" builds with "UnityEngine not found":
+         add it to the Exclude below and to the Compile item of the Sample project. -->
+    <PropertyGroup>
+        <HsmPackageDir>$(MSBuildThisFileDirectory)..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\</HsmPackageDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(HsmPackageDir)Source\**\*.cs" Link="Source\%(RecursiveDir)%(Filename)%(Extension)" />
+        <Compile Include="$(HsmPackageDir)Unity\Runtime\**\*.cs"
+                 Exclude="$(HsmPackageDir)Unity\Runtime\StateMachines\MonoStateMachine*.cs"
+                 Link="Runtime\%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+
+</Project>

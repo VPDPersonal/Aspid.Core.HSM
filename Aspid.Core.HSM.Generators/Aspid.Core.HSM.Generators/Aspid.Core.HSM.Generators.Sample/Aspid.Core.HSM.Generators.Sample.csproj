@@ -13,115 +13,20 @@
         <ProjectReference Include="..\Aspid.Core.HSM.Generators\Aspid.Core.HSM.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 
+    <!-- The generator's bin/ output is not merged (see ILRepack.targets), so the compiler needs its
+         dependencies as analyzers too, or the generator fails to load. The versions come from
+         Directory.Build.props, shared with the generator. -->
     <ItemGroup>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Extensions\StateExtensions.cs">
-        <Link>Source\Extensions\StateExtensions.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Extensions\StateMachineExtensions.cs">
-        <Link>Source\Extensions\StateMachineExtensions.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncAttribute.cs">
-        <Link>Source\Generation\AsyncAttribute.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ControllerGroupAttribute.cs">
-        <Link>Source\Generation\ControllerGroupAttribute.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ReverseExecuteAttribute.cs">
-        <Link>Source\Generation\ReverseExecuteAttribute.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\States\IChildState.cs">
-        <Link>Source\States\IChildState.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Controllers\IController.cs">
-        <Link>Source\Controllers\IController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\States\IState.cs">
-        <Link>Source\States\IState.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\IStateMachine.cs">
-        <Link>Source\IStateMachine.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\States\EmptyState.cs">
-        <Link>Source\States\EmptyState.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\StateFactory.cs">
-        <Link>Source\StateFactory.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\States\IStateScope.cs">
-        <Link>Source\States\IStateScope.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\ScopeLifetime.cs">
-        <Link>Source\ScopeLifetime.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ScopeLifetimeAttribute.cs">
-        <Link>Source\Generation\ScopeLifetimeAttribute.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IDisposableController.cs">
-        <Link>Runtime\Controllers\IDisposableController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IEnterController.cs">
-        <Link>Runtime\Controllers\IEnterController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IExitController.cs">
-        <Link>Runtime\Controllers\IExitController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IFixedUpdateController.cs">
-        <Link>Runtime\Controllers\IFixedUpdateController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\ILateUpdateController.cs">
-        <Link>Runtime\Controllers\ILateUpdateController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IUpdateController.cs">
-        <Link>Runtime\Controllers\IUpdateController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\MonoStateMachine.cs">
-        <Link>Runtime\StateMachines\MonoStateMachine.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\MonoStateMachineCore.cs">
-        <Link>Runtime\StateMachines\MonoStateMachineCore.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.cs">
-        <Link>Runtime\StateMachines\StateMachineBase.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Async.cs">
-        <Link>Runtime\StateMachines\StateMachineBase.Async.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Transitions.cs">
-        <Link>Runtime\StateMachines\StateMachineBase.Transitions.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\MonoStateMachine.Async.cs">
-        <Link>Runtime\StateMachines\MonoStateMachine.Async.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IAsyncEnterController.cs">
-        <Link>Runtime\Controllers\IAsyncEnterController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\Controllers\IAsyncExitController.cs">
-        <Link>Runtime\Controllers\IAsyncExitController.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\ITransition.cs">
-        <Link>Source\ITransition.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncModeAttribute.cs">
-        <Link>Source\Generation\AsyncModeAttribute.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncExecutionMode.cs">
-        <Link>Source\Generation\AsyncExecutionMode.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\AsyncOfAttribute.cs">
-        <Link>Source\Generation\AsyncOfAttribute.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\TransitionAttribute.cs">
-        <Link>Source\Generation\TransitionAttribute.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\States\IExtensionState.cs">
-        <Link>Source\States\IExtensionState.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Source\Generation\ExtensionForAttribute.cs">
-        <Link>Source\Generation\ExtensionForAttribute.cs</Link>
-      </Compile>
-      <Compile Include="..\..\..\Aspid.Core.HSM\Assets\Plugins\Aspid\Core\HSM\Unity\Runtime\StateMachines\StateMachineBase.Extensions.cs">
-        <Link>Runtime\StateMachines\StateMachineBase.Extensions.cs</Link>
-      </Compile>
+        <PackageReference Include="Aspid.Generators.Helper" Version="$(AspidGeneratorsHelperVersion)" GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+        <PackageReference Include="Aspid.Generators.Helper.Unity" Version="$(AspidGeneratorsHelperUnityVersion)" GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+        <Analyzer Include="$(PkgAspid_Generators_Helper)/lib/netstandard2.0/Aspid.Generators.Helper.dll" />
+        <Analyzer Include="$(PkgAspid_Generators_Helper_Unity)/lib/netstandard2.0/Aspid.Generators.Helper.Unity.dll" />
+    </ItemGroup>
+
+    <Import Project="..\..\RuntimeSources.props" />
+
+    <ItemGroup>
+        <Compile Include="$(HsmPackageDir)Unity\Runtime\StateMachines\MonoStateMachine*.cs" Link="Runtime\StateMachines\%(Filename)%(Extension)" />
     </ItemGroup>
 
     <ItemGroup>

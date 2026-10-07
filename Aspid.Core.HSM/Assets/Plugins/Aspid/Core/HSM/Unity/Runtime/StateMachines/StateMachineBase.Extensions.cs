@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
@@ -58,26 +59,56 @@ namespace Aspid.Core.HSM
             }
         }
 
+        // A detach, once started, always completes: a throwing callback must not leave the extension attached,
+        // for example under a parent whose scope is disposed next.
         private void DetachExtensionAt(int index)
         {
             var extension = _activeExtensions[index];
             var leafState = _currentStates[^1];
 
-            extension.OnDetached(leafState);
-            extension.GetController<IExitController>()?.OnExit();
-            extension.Exit();
-            _stateFactory.Release(extension);
-            _activeExtensions.RemoveAt(index);
+            try
+            {
+                extension.OnDetached(leafState);
+                extension.GetController<IExitController>()?.OnExit();
+            }
+            finally
+            {
+                try
+                {
+                    extension.Exit();
+                }
+                finally
+                {
+                    _activeExtensions.RemoveAt(index);
+                    if (index <= _tickedExtensionIndex)
+                        _tickedExtensionIndex--;
+
+                    _stateFactory.Release(extension);
+                }
+            }
         }
 
+        // Every bound extension is detached even if one of them throws: none may outlive its parent's scope.
         private void DetachExtensionsBoundTo(IState state)
         {
             var stateType = state.GetType();
+            List<Exception>? failures = null;
             for (int i = _activeExtensions.Count - 1; i >= 0; i--)
             {
-                if (_stateFactory.GetParentType(_activeExtensions[i].GetType()) == stateType)
+                if (_stateFactory.GetParentType(_activeExtensions[i].GetType()) != stateType)
+                    continue;
+
+                try
+                {
                     DetachExtensionAt(i);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= new List<Exception>()).Add(exception);
+                }
             }
+
+            ThrowFailures(failures);
         }
 
         private int IndexOfActiveState(Type stateType)
@@ -91,14 +122,41 @@ namespace Aspid.Core.HSM
             return -1;
         }
 
-        private void AutoDetachIncompatibleExtensions()
+        private void AutoDetachIncompatibleExtensions() =>
+            ThrowFailures(DetachIncompatibleExtensions(failures: null));
+
+        // Every incompatible extension is detached even if one of them throws, as in DetachExtensionsBoundTo.
+        // The failures are added to the given list rather than thrown, so a caller that already collects
+        // failures keeps them flat instead of nesting an AggregateException. Returns the list.
+        private List<Exception>? DetachIncompatibleExtensions(List<Exception>? failures)
         {
             var leafState = _currentStates[^1];
             for (int i = _activeExtensions.Count - 1; i >= 0; i--)
             {
-                if (!_activeExtensions[i].CanAttachTo(leafState))
-                    DetachExtensionAt(i);
+                try
+                {
+                    if (!_activeExtensions[i].CanAttachTo(leafState))
+                        DetachExtensionAt(i);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= new List<Exception>()).Add(exception);
+                }
             }
+
+            return failures;
+        }
+
+        // A single failure is rethrown as it is, with its stack trace; several go out together.
+        private static void ThrowFailures(List<Exception>? failures)
+        {
+            if (failures is null)
+                return;
+
+            if (failures.Count == 1)
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+
+            throw new AggregateException(failures);
         }
     }
 }

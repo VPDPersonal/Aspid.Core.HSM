@@ -16,7 +16,9 @@ namespace Aspid.Core.HSM
         /// <summary>
         /// Called once each time the state is exited during an async state change.
         /// </summary>
-        /// <param name="cancellationToken">Cancelled if a newer state change supersedes this one.</param>
+        /// <param name="cancellationToken">
+        /// Cancelled if a newer state change supersedes this one. The machine then stops waiting for this call.
+        /// </param>
         [ReverseExecute]
         public UniTask OnExitAsync(CancellationToken cancellationToken);
     }

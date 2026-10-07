@@ -19,19 +19,20 @@ Check, in this order:
    - `StateMachineBase` only diffs the chain and calls enter and exit;
    - a change on one side keeps the assumptions of the other side: `Release` on exit, `_initializedStates` for the first enter.
 2. Boundaries:
-   - `package.json` declares Unity `2022.3`: no Unity API newer than 2022.3 without a version guard;
+   - `package.json` declares Unity `6000.0.53f1`: no Unity API newer than that without a `#if UNITY_6000_x_OR_NEWER` guard;
    - `Source/` (asmdef `Aspid.Core.HSM`) does not reference `UnityEngine`;
    - Unity-specific code goes to `Unity/Runtime/`;
    - no editor-only APIs reachable from runtime code;
-   - the generator targets `netstandard2.0` and does not write to `Console`;
+   - the generator targets `netstandard2.0`, does not write to `Console` and does not reference `SourceGenerator.Foundations`;
    - a new file under `Assets/` ships with its `.meta`;
    - Unity manages `.meta` files: no `.meta` is edited by hand.
-3. Public API: a change needs an entry under `[Unreleased]` in `CHANGELOG.md`.
+3. Public API: a user-visible change should have an entry under `[Unreleased]` in `CHANGELOG.md`.
+   The CHANGELOG is not mandatory yet: a missing entry is at most `[minor]`.
    New or changed members need XML docs.
    A rename of a public attribute or type in the runtime needs an update of
    `Descriptions/HsmClasses.cs` or `HsmNamespaces.cs` in the generator.
 4. Generators: a source change needs the rebuilt `Aspid.Core.HSM.Generators.dll` in the package.
-   `dotnet build` copies it there.
+   `dotnet build -c Release` copies it there; a Debug build does not.
    A new or changed emit branch needs a snapshot test in `Aspid.Core.HSM.Generators.Tests/`.
 5. Version: the `package.json` version and the `CHANGELOG.md` heading must agree. `release.yml` checks this.
 
