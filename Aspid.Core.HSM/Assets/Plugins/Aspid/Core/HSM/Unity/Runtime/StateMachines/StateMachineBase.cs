@@ -378,11 +378,12 @@ namespace Aspid.Core.HSM
 
         #region Profiling
 #if ENABLE_PROFILER
-        // One set of markers per state type, shared by every machine: markers are registered with the
-        // profiler by name, so creating them once per type keeps the hot path allocation-free.
-        private static readonly Dictionary<Type, StateMarkers> _stateMarkers = new();
+        // One set of markers per state type, created on first use so the hot path stays allocation-free.
+        // Per machine rather than static: the cache is not synchronized, and machines may live on different
+        // threads. The profiler identifies a marker by name, so every machine still reports into one entry.
+        private readonly Dictionary<Type, StateMarkers> _stateMarkers = new();
 
-        private static StateMarkers GetMarkers(IState state)
+        private StateMarkers GetMarkers(IState state)
         {
             var type = state.GetType();
             if (!_stateMarkers.TryGetValue(type, out var markers))
