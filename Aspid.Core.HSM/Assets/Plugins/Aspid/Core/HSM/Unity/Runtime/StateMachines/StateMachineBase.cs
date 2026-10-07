@@ -140,6 +140,7 @@ namespace Aspid.Core.HSM
         /// <exception cref="InvalidOperationException">An async transition is already in progress.</exception>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// Or several extensions threw while the change detached them.
         /// </exception>
         public void ChangeState<TState>()
             where TState : IState =>
@@ -208,33 +209,29 @@ namespace Aspid.Core.HSM
         // A change that throws midway keeps the states it reached: exited states cannot be entered back.
         // Close it anyway, so OnChangingState/OnChangedState stay paired and extensions are checked against
         // the leaf that is really active. An empty chain falls back to EmptyState, as at start, because every
-        // later change and tick reads the leaf. A closing callback that throws must not hide the cause.
-        private void CloseFailedChange(Exception cause)
+        // later change and tick reads the leaf. A closing callback that throws must not hide the cause:
+        // its exception joins the failures collected so far, and all go out after the cause.
+        private void CloseFailedChange(Exception cause, List<Exception>? failures = null)
         {
             if (_currentStates.Count == 0)
                 _currentStates.Add(new EmptyState());
 
-            List<Exception>? closeExceptions = null;
             try
             {
                 OnChangedState();
             }
             catch (Exception exception)
             {
-                (closeExceptions ??= new List<Exception> { cause }).Add(exception);
+                (failures ??= new List<Exception>()).Add(exception);
             }
 
-            try
-            {
-                AutoDetachIncompatibleExtensions();
-            }
-            catch (Exception exception)
-            {
-                (closeExceptions ??= new List<Exception> { cause }).Add(exception);
-            }
+            failures = DetachIncompatibleExtensions(failures);
 
-            if (closeExceptions is not null)
-                throw new AggregateException(closeExceptions);
+            if (failures is not null)
+            {
+                failures.Insert(0, cause);
+                throw new AggregateException("A state change failed, and closing it failed as well.", failures);
+            }
         }
 
         // The active states are kept for the longest prefix whose types match the new chain from the root.
