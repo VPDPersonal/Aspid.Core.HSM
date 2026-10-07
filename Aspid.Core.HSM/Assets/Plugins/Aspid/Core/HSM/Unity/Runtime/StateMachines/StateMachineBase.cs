@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -487,6 +488,10 @@ namespace Aspid.Core.HSM
         /// edges. A target with no registered transition covering every step of the path then throws
         /// <see cref="InvalidOperationException"/> instead of silently succeeding. <see cref="ChangeState{TState}"/>
         /// remains the deliberate escape hatch and is never subject to this check.
+        /// </para>
+        /// <para>
+        /// It also makes <see cref="TransitionVia{TTransition}"/> throw when the transition's source state is not
+        /// active, instead of silently doing nothing.
         /// </para>
         /// </remarks>
         protected virtual bool StrictTransitions => false;
