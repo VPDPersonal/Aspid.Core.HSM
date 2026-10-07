@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 
 // ReSharper disable once CheckNamespace

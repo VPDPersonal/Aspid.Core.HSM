@@ -1,3 +1,4 @@
+#nullable enable
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using System.Collections.Generic;
@@ -32,7 +33,9 @@ namespace Aspid.Core.HSM
 
         /// <summary>
         /// Executes a specific registered transition by type, transitioning to its
-        /// <see cref="ITransition.TargetState"/> if <see cref="ITransition.CanTransition"/> returns <c>true</c>.
+        /// <see cref="ITransition.TargetState"/> if the machine is in its <see cref="ITransition.SourceState"/>
+        /// (the source or one of its descendants is active) and <see cref="ITransition.CanTransition"/> returns
+        /// <c>true</c>. From any other state the call does nothing — or throws when strict transitions are enabled.
         /// </summary>
         /// <typeparam name="TTransition">The transition type to execute.</typeparam>
         void TransitionVia<TTransition>() where TTransition : ITransition;
