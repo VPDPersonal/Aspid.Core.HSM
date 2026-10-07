@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace Aspid.Core.HSM.Generators.Tests.StateMachineTests;
@@ -191,6 +192,20 @@ public class ScopedCreationTests
     }
 
     [Fact]
+    public void A_throwing_close_callback_does_not_hide_the_original_exception()
+    {
+        var sm = new ThrowingOnChangedStateMachine(_factory);
+        sm.ChangeState<ScopedLeafState>();
+        sm.ThrowOnChanged = true;
+
+        var exception = Assert.Throws<AggregateException>(() => sm.ChangeState<ThrowingLeafState>());
+
+        Assert.Equal(
+            new[] { "constructor failed", "OnChangedState failed" },
+            exception.InnerExceptions.Select(inner => inner.Message));
+    }
+
+    [Fact]
     public void A_throwing_root_constructor_leaves_an_empty_state_the_machine_can_leave()
     {
         _sm.ChangeState<ScopedLeafState>();
@@ -325,6 +340,17 @@ public class ScopedCreationTests
     private sealed class LoggingStateMachine(StateFactory factory, List<string> log) : StateMachineBase(factory)
     {
         protected override void OnEnteredState(IState state) => log.Add("enter " + state.GetType().Name);
+    }
+
+    private sealed class ThrowingOnChangedStateMachine(StateFactory factory) : StateMachineBase(factory)
+    {
+        public bool ThrowOnChanged { get; set; }
+
+        protected override void OnChangedState()
+        {
+            if (ThrowOnChanged)
+                throw new InvalidOperationException("OnChangedState failed");
+        }
     }
 
     private sealed class ChangeHookStateMachine(StateFactory factory, List<string> log) : StateMachineBase(factory)

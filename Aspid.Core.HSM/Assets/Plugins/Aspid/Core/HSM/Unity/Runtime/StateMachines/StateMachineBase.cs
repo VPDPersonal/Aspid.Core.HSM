@@ -138,6 +138,9 @@ namespace Aspid.Core.HSM
         /// <see cref="EmptyState"/> when none is left. <see cref="OnChangedState"/> still runs, then the exception propagates.
         /// </remarks>
         /// <exception cref="InvalidOperationException">An async transition is already in progress.</exception>
+        /// <exception cref="AggregateException">
+        /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// </exception>
         public void ChangeState<TState>()
             where TState : IState =>
             ChangeState(typeof(TState));
@@ -188,20 +191,50 @@ namespace Aspid.Core.HSM
                     EnterState(state);
                 }
             }
+            catch (Exception cause)
+            {
+                CloseFailedChange(cause);
+                throw;
+            }
             finally
             {
                 ReturnTypeChainBuffer(newChain);
+            }
 
-                // A change that throws midway keeps the states it reached: exited states cannot be entered
-                // back. Close it anyway, so OnChangingState/OnChangedState stay paired and extensions are
-                // checked against the leaf that is really active. An empty chain falls back to EmptyState,
-                // as at start, because every later change and tick reads the leaf.
-                if (_currentStates.Count == 0)
-                    _currentStates.Add(new EmptyState());
+            OnChangedState();
+            AutoDetachIncompatibleExtensions();
+        }
 
+        // A change that throws midway keeps the states it reached: exited states cannot be entered back.
+        // Close it anyway, so OnChangingState/OnChangedState stay paired and extensions are checked against
+        // the leaf that is really active. An empty chain falls back to EmptyState, as at start, because every
+        // later change and tick reads the leaf. A closing callback that throws must not hide the cause.
+        private void CloseFailedChange(Exception cause)
+        {
+            if (_currentStates.Count == 0)
+                _currentStates.Add(new EmptyState());
+
+            List<Exception>? closeExceptions = null;
+            try
+            {
                 OnChangedState();
+            }
+            catch (Exception exception)
+            {
+                (closeExceptions ??= new List<Exception> { cause }).Add(exception);
+            }
+
+            try
+            {
                 AutoDetachIncompatibleExtensions();
             }
+            catch (Exception exception)
+            {
+                (closeExceptions ??= new List<Exception> { cause }).Add(exception);
+            }
+
+            if (closeExceptions is not null)
+                throw new AggregateException(closeExceptions);
         }
 
         // The active states are kept for the longest prefix whose types match the new chain from the root.
