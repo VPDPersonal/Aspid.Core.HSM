@@ -36,7 +36,7 @@ https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview
 To pin a specific preview version, target the immutable per-release tag (see [Releases](https://github.com/VPDPersonal/Aspid.Core.HSM/releases) for the list of available versions):
 
 ```
-https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview/0.0.1-alpha.2
+https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview/0.0.1-alpha.1
 ```
 
 > **Note.** There is no stable release yet, so the `upm` branch does not exist. The [Release workflow](.github/workflows/release.yml) creates it — along with `upm/<version>` tags and a `#upm` install URL — when the first non-prerelease version ships.

@@ -62,7 +62,7 @@ namespace Aspid.Core.HSM
                     return;
 
                 transition.OnBeforeTransition();
-                ApplyChangeState(targetType);
+                ChangeStateCore(targetType);
                 transition.OnAfterTransition();
                 return;
             }
@@ -74,7 +74,7 @@ namespace Aspid.Core.HSM
 
             if (chain is null)
             {
-                ApplyChangeState(targetType);
+                ChangeStateCore(targetType);
                 return;
             }
 
@@ -87,7 +87,7 @@ namespace Aspid.Core.HSM
             foreach (var t in chain)
                 t.OnBeforeTransition();
 
-            ApplyChangeState(targetType);
+            ChangeStateCore(targetType);
 
             for (var i = chain.Count - 1; i >= 0; i--)
                 chain[i].OnAfterTransition();
@@ -118,13 +118,22 @@ namespace Aspid.Core.HSM
                 return;
 
             transition.OnBeforeTransition();
-            ApplyChangeState(transition.TargetState);
+            ChangeStateCore(transition.TargetState);
             transition.OnAfterTransition();
         }
         #endregion
 
         #region TransitionTo (async)
-        /// <inheritdoc />
+        /// <summary>
+        /// Asynchronously transitions to <typeparamref name="TTarget"/>, executing any registered
+        /// <see cref="ITransition"/> guards and hooks along the path.
+        /// </summary>
+        /// <typeparam name="TTarget">The target leaf state type.</typeparam>
+        /// <param name="ct">Cancellation token for the transition.</param>
+        /// <exception cref="InvalidOperationException">
+        /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// Or <see cref="StrictTransitions"/> is enabled and no registered transition covers the whole path.
+        /// </exception>
         public UniTask TransitionToAsync<TTarget>(CancellationToken ct = default)
             where TTarget : IState =>
             TransitionToAsync(typeof(TTarget), ct);
@@ -134,9 +143,16 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         public async UniTask TransitionToAsync(Type targetType, CancellationToken ct = default)
         {
+            ThrowIfSyncChangeInProgress();
+
+            if (!IsStateEnabled(targetType))
+                return;
+
+            // Resolve the edge only after the superseded transition has unwound, as ChangeStateAsync does.
+            await SupersedeActiveTransitionAsync();
             var currentLeafType = _currentStates[^1].GetType();
 
-            if (!IsStateEnabled(targetType) || !IsTransitionEnabled(currentLeafType, targetType))
+            if (!IsTransitionEnabled(currentLeafType, targetType))
                 return;
 
             var transition = ResolveTransition(currentLeafType, targetType);
@@ -147,7 +163,7 @@ namespace Aspid.Core.HSM
                     return;
 
                 transition.OnBeforeTransition();
-                await ChangeStateAsync(targetType, ct);
+                await RunTransitionCoreAsync(targetType, ct);
                 transition.OnAfterTransition();
                 return;
             }
@@ -159,7 +175,7 @@ namespace Aspid.Core.HSM
 
             if (chain is null)
             {
-                await ChangeStateAsync(targetType, ct);
+                await RunTransitionCoreAsync(targetType, ct);
                 return;
             }
 
@@ -172,7 +188,7 @@ namespace Aspid.Core.HSM
             foreach (var t in chain)
                 t.OnBeforeTransition();
 
-            await ChangeStateAsync(targetType, ct);
+            await RunTransitionCoreAsync(targetType, ct);
 
             for (var i = chain.Count - 1; i >= 0; i--)
                 chain[i].OnAfterTransition();
@@ -180,7 +196,16 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region TransitionVia (async)
-        /// <inheritdoc />
+        /// <summary>
+        /// Asynchronously executes a specific registered transition by type, transitioning to its
+        /// <see cref="ITransition.TargetState"/> if <see cref="ITransition.CanTransition"/> returns <see langword="true"/>.
+        /// </summary>
+        /// <typeparam name="TTransition">The registered transition type to execute.</typeparam>
+        /// <param name="ct">Cancellation token for the transition.</param>
+        /// <exception cref="InvalidOperationException">
+        /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// Or the transition type is not registered.
+        /// </exception>
         public UniTask TransitionViaAsync<TTransition>(CancellationToken ct = default)
             where TTransition : ITransition =>
             TransitionViaAsync(typeof(TTransition), ct);
@@ -190,16 +215,22 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         public async UniTask TransitionViaAsync(Type transitionType, CancellationToken ct = default)
         {
+            ThrowIfSyncChangeInProgress();
+
             var transition = FindTransitionByType(transitionType);
+
+            if (!IsStateEnabled(transition.TargetState))
+                return;
+
+            await SupersedeActiveTransitionAsync();
             var currentLeafType = _currentStates[^1].GetType();
 
-            if (!IsStateEnabled(transition.TargetState) ||
-                !IsTransitionEnabled(currentLeafType, transition.TargetState) ||
+            if (!IsTransitionEnabled(currentLeafType, transition.TargetState) ||
                 !transition.CanTransition())
                 return;
 
             transition.OnBeforeTransition();
-            await ChangeStateAsync(transition.TargetState, ct);
+            await RunTransitionCoreAsync(transition.TargetState, ct);
             transition.OnAfterTransition();
         }
         #endregion
@@ -338,6 +369,16 @@ namespace Aspid.Core.HSM
             if (_activeTransitionCts is not null)
                 throw new InvalidOperationException(
                     "An asynchronous transition is in progress. Use the async transition methods or wait for it to complete.");
+        }
+
+        // The mirror of ThrowIfAsyncTransitionInProgress. An async change started from a synchronous Enter/OnEnter
+        // would run inside the synchronous change and rewrite the chain that change is still iterating.
+        private void ThrowIfSyncChangeInProgress()
+        {
+            if (_isChangingState)
+                throw new InvalidOperationException(
+                    "A synchronous state change is in progress. Call ChangeState, TransitionTo or TransitionVia instead: " +
+                    "they queue the request and apply it once the running change completes.");
         }
         #endregion
     }
