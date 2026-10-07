@@ -3,7 +3,7 @@ name: asp-pr
 description: "Create or update a pull request: title, body, labels, screenshots; push + gh in one chain."
 when_to_use: "Any pull request work: «открой пр», «сделай пр», «пр в main», «обнови пр / описание пр», «переведи в ready», «смержи пр», «пр стэком» (with `gh-stack`), «смени base». Load it before every `gh pr create/edit/ready/merge`."
 shell: bash
-allowed-tools: Bash(git branch -m:*) Bash(git switch -c:*) Bash(git push -u origin HEAD) Bash(git config branch.:*) Bash(git diff:*) Bash(git log:*) Bash(cat:*) Bash(gh pr create:*) Bash(gh pr edit:*) Bash(gh pr view:*) Bash(gh pr ready:*) Bash(gh pr merge:*) Bash(gh pr checks:*) Bash(gh pr comment:*) Bash(gh api repos/*/pulls/*) Bash(sh "${CLAUDE_SKILL_DIR}/scripts/*) Bash(unity command screenshot:*) Bash(sips:*)
+allowed-tools: Bash(git branch -m:*) Bash(git switch -c:*) Bash(git push -u origin HEAD) Bash(git config branch.:*) Bash(git diff:*) Bash(git log:*) Bash(cat:*) Bash(gh pr create:*) Bash(gh pr edit:*) Bash(gh pr view:*) Bash(gh pr ready:*) Bash(gh pr merge:*) Bash(gh pr checks:*) Bash(gh pr comment:*) Bash(gh api repos/*/pulls/*) Bash(sh "${CLAUDE_SKILL_DIR}/scripts/*)
 ---
 
 ```!
@@ -227,7 +227,7 @@ Defaults. The repo's review rules for the bot (for example `.github/claude-revie
    - the user was asked something in this loop → give a 3-line summary and ask «мержу?».
 9. Report the result: rounds, fixed findings, declined findings with reasons, merge state.
 
-- **Stacked PRs** («пр стэком», «стэк пр», «мерж весь стэк»). Load the `gh-stack` skill. Create, push, rebase and merge with `gh stack`. This skill still writes the title and body of each PR.
+- **Stacked PRs** («пр стэком», «стэк пр», «мерж весь стэк»). Load the `gh-stack` skill. Create, push, rebase and merge with `gh stack`. No `gh-stack` skill in the session? Base each PR on the branch of the previous one. This skill still writes the title and body of each PR.
 - **Epic branch.** Merge each PR into the epic branch. Merge the epic PR last.
 - **Submodule.** After the merge, update the submodule in the parent repo with its own commit (`asp-commit`) and PR.
 

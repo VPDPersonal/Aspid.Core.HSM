@@ -11,7 +11,7 @@ b=$(git config --get "branch.$cur.gh-merge-base" 2>/dev/null || true)
 [ -n "$b" ] && { echo "BASE $b"; exit 0; }
 
 # 2. Upstream pointing to a different branch.
-u=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null | sed 's@^origin/@@' || true)
+u=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null | sed -E 's@^(origin|upstream)/@@' || true)
 [ -n "$u" ] && [ "$u" != "$cur" ] && { echo "BASE $u"; exit 0; }
 
 # 3. Nearest ancestor by commits ahead, across local + origin branches.
