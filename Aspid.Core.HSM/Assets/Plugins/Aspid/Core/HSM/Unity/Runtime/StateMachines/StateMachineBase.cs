@@ -20,6 +20,10 @@ namespace Aspid.Core.HSM
         private bool _isChangingState;
         private bool _isTicking;
 
+        // Index of the extension the running tick is at, or -1 outside a tick. DetachExtensionAt shifts it
+        // when it removes an extension at or before it, so the tick does not skip the next extension.
+        private int _tickedExtensionIndex = -1;
+
         private CancellationTokenSource? _activeTransitionCts;
 
         /// <inheritdoc />
@@ -67,7 +71,7 @@ namespace Aspid.Core.HSM
             {
                 // Indexed rather than foreach: a controller may still attach or detach an extension, or start
                 // an async transition, and those change the lists mid-tick. An index sees them as they are now:
-                // a state or extension removed before its turn is skipped instead of throwing.
+                // a state or extension removed before its turn is not ticked, and nothing throws.
                 for (var i = 0; i < _currentStates.Count; i++)
                 {
                     var state = _currentStates[i];
@@ -76,9 +80,9 @@ namespace Aspid.Core.HSM
                         invoke(controller, deltaTime);
                 }
 
-                for (var i = 0; i < _activeExtensions.Count; i++)
+                for (_tickedExtensionIndex = 0; _tickedExtensionIndex < _activeExtensions.Count; _tickedExtensionIndex++)
                 {
-                    var extension = _activeExtensions[i];
+                    var extension = _activeExtensions[_tickedExtensionIndex];
                     var controller = extension.GetController<TController>();
                     if (controller is not null && IsControllerEnabled(controller, extension))
                         invoke(controller, deltaTime);
@@ -93,6 +97,7 @@ namespace Aspid.Core.HSM
             finally
             {
                 _isTicking = false;
+                _tickedExtensionIndex = -1;
             }
 
             if (_pendingRequests.Count > 0)

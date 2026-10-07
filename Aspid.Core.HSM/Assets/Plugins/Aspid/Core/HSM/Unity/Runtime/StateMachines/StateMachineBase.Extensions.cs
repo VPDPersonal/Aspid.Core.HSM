@@ -60,6 +60,9 @@ namespace Aspid.Core.HSM
             extension.Exit();
             _stateFactory.Release(extension);
             _activeExtensions.RemoveAt(index);
+
+            if (index <= _tickedExtensionIndex)
+                _tickedExtensionIndex--;
         }
 
         private void AutoDetachIncompatibleExtensions()
