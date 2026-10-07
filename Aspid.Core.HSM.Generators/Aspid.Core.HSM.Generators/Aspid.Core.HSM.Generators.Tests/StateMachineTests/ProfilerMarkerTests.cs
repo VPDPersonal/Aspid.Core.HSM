@@ -42,6 +42,7 @@ public class ProfilerMarkerTests
         _factory.RegisterState<ProfiledGenericState<int>>();
         _factory.RegisterState<ProfiledOuter<int>.Inner>();
         _factory.RegisterState<ProfiledOuter<int>.Generic<string>>();
+        _factory.RegisterState<ProfiledOuter<(int, string)>.Inner>();
         _sm = new TestableStateMachine(_factory);
     }
 
@@ -96,6 +97,7 @@ public class ProfilerMarkerTests
     [Theory]
     [InlineData(typeof(ProfiledOuter<int>.Inner), "ProfiledOuter<System.Int32>.Inner")]
     [InlineData(typeof(ProfiledOuter<int>.Generic<string>), "ProfiledOuter<System.Int32>.Generic<System.String>")]
+    [InlineData(typeof(ProfiledOuter<(int, string)>.Inner), "ProfiledOuter<System.ValueTuple<System.Int32, System.String>>.Inner")]
     public void Nested_generic_state_marker_keeps_each_segment(Type stateType, string expectedName)
     {
         _sm.ChangeState(stateType);

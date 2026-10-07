@@ -406,7 +406,7 @@ namespace Aspid.Core.HSM
 
         // Full name with readable generic arguments, so two closings of one generic state get separate markers.
         // Nested types are joined with '.', and each segment keeps its own arguments: NS.Outer<System.Int32>.Inner.
-        // ControllerGroupBody names controller markers in the same format, so one type reads the same everywhere.
+        // ControllerGroupBody.GetMarkerTypeName names controller markers in the same format, tuples included.
         private static string GetMarkerTypeName(Type type)
         {
             if (type.IsArray)

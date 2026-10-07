@@ -57,9 +57,10 @@ public class GenericControllerEmitTests
                 public CountdownState(
                     CountdownController<DrivingState> toDriving,
                     CountdownController<FinishingState> toFinishing,
-                    Outer<int>.InnerController inner)
+                    Outer<int>.InnerController inner,
+                    Outer<(int, string)>.InnerController tupleInner)
                 {
-                    AddControllers(toDriving, toFinishing, inner);
+                    AddControllers(toDriving, toFinishing, inner, tupleInner);
                 }
             }
         }
@@ -90,6 +91,7 @@ public class GenericControllerEmitTests
 
         // StateMachineBase.GetMarkerTypeName spells this type the same way: CLR names, nesting with '.'.
         Assert.Contains("new(\"Sample.Outer<System.Int32>.InnerController\")", generated);
+        Assert.Contains("new(\"Sample.Outer<System.ValueTuple<System.Int32, System.String>>.InnerController\")", generated);
     }
 
     [Fact]
