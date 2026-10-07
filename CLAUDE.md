@@ -61,6 +61,7 @@ When adding a state, implement `IState`, add `IChildState<TParent>` if it has a 
 - `.claude/skills/rebuild-generator` — user-invoked rebuild; copy is automatic via `Directory.Build.targets`.
 - `.claude/skills/gen-snapshot-test` — template for generator tests under `Aspid.Core.HSM.Generators.Tests/GeneratorTests/` that run the generator with `CSharpGeneratorDriver`.
 - `.claude/skills/asp-branch`, `asp-commit`, `asp-pr` — branch names, commits and pull requests. Use them for every commit and PR, so that all contributors follow one format. `asp-pr` reads repo-specific rules (scopes, labels, review loop) from `.claude/asp-pr.md` when that file exists. `asp-commit` and `asp-pr` run `sh` scripts and need `git` and an authenticated `gh`. On Windows, install Git for Windows: Claude Code then runs them in Git Bash.
+- `.claude/skills/asp-hsm-release` — user-invoked release: the release PR, the tag after a yes, and the check of what was published.
 - `.claude/skills/asp-xmldoc` — XML docs (`///`) conventions for public C# API. It loads before you write a `///` comment.
 - `.mcp.json` ships `context7` (Roslyn/Unity docs) and `github` (needs `GITHUB_PERSONAL_ACCESS_TOKEN`).
 - `.github/workflows/claude.yml` runs `anthropics/claude-code-action` in two jobs:
@@ -72,4 +73,5 @@ When adding a state, implement `IState`, add `IChildState<TParent>` if it has a 
 - `.claude/asp-pr.md` — PR rules for the `asp-pr` skill: types, scopes and the review loop.
 - `.github/workflows/tests.yml` runs on every PR and push to `main`: the .NET tests, the C# 9 runtime build, `scripts/check-package.mjs`, `scripts/check-skills.mjs`, and a Unity job that compiles the package and its sample on the minimum Unity in a throwaway project (`scripts/make-unity-test-project.sh`). The Unity job is skipped until the `UNITY_LICENSE`, `UNITY_EMAIL` and `UNITY_PASSWORD` secrets exist.
 - `.github/workflows/pr-checks.yml` checks the PR title against the types and scopes in `.claude/asp-pr.md` and sets the `type:*`, `area:*` and `breaking-change` labels. Keep the two lists in sync.
+- `.github/workflows/release.yml` publishes a release from a pushed `v*` tag or a manual run on `main`. It checks the version files (`scripts/check-version.mjs`), the package, the tests and that the committed generator DLL matches a fresh Release build, then pushes the `upm`/`upm-preview` branch and both tags in one atomic push. Change the version only with `scripts/set-version.sh <version>`: it sets `package.json` and moves the `[Unreleased]` notes into the version's section. `/asp-hsm-release <version>` runs the whole release.
 - `.github/dependabot.yml` updates GitHub Actions weekly. NuGet stays manual: Roslyn versions are pinned to what Unity ships.
