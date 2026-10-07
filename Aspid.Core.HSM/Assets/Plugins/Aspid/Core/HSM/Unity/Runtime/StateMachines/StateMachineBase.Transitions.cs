@@ -36,6 +36,13 @@ namespace Aspid.Core.HSM
 
         #region TransitionTo (sync)
         /// <inheritdoc />
+        /// <remarks>
+        /// A failure inside the state change itself stops it midway, as in <see cref="ChangeState{TState}"/>:
+        /// exited states stay exited, and <see cref="OnChangedState"/> still runs before the exception propagates.
+        /// </remarks>
+        /// <exception cref="AggregateException">
+        /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// </exception>
         public void TransitionTo<TTarget>() where TTarget : IState =>
             TransitionTo(typeof(TTarget));
 
@@ -96,6 +103,13 @@ namespace Aspid.Core.HSM
 
         #region TransitionVia (sync)
         /// <inheritdoc />
+        /// <remarks>
+        /// A failure inside the state change itself stops it midway, as in <see cref="ChangeState{TState}"/>:
+        /// exited states stay exited, and <see cref="OnChangedState"/> still runs before the exception propagates.
+        /// </remarks>
+        /// <exception cref="AggregateException">
+        /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// </exception>
         public void TransitionVia<TTransition>() where TTransition : ITransition =>
             TransitionVia(typeof(TTransition));
 
