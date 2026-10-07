@@ -23,7 +23,22 @@ env:
   GENERATORS_DIR: Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators
 
 jobs:
+  # Every test of Tests on the commit being released; here missing Unity secrets fail instead of skipping Unity.
+  tests:
+    name: Tests
+    uses: ./.github/workflows/tests.yml
+    with:
+      require-unity: true
+    secrets:
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+
   release:
+    needs: tests
     runs-on: ubuntu-latest
 
     steps:
@@ -106,11 +121,9 @@ jobs:
         with:
           node-version: 22
 
-      # The CHANGELOG must carry the version's section and links; the package its samples and .meta files.
-      - name: Validate version files and package
-        run: |
-          node scripts/check-version.mjs
-          node scripts/check-package.mjs
+      # The CHANGELOG must carry the version's section and links. The package checks run in Tests.
+      - name: Validate version files
+        run: node scripts/check-version.mjs
 
       - name: Extract CHANGELOG section
         run: |
@@ -132,17 +145,11 @@ jobs:
           printf '%s\n' "$NOTES" > "$RUNNER_TEMP/release-notes.md"
           echo "CHANGELOG section for $VERSION extracted ($(echo "$NOTES" | wc -l) lines)."
 
+      # The SDK pinned in global.json builds the DLL, the same one that built the committed one.
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
-
-      # Tests run in Debug on purpose: the Directory.Build.targets copy of the generator DLL into the Unity package
-      # is Release-only, so a Debug test run can never interfere with the DLL freshness check below.
-      - name: Run tests and the C# 9 runtime build
-        run: |
-          dotnet test "$GENERATORS_DIR/Aspid.Core.HSM.Generators.Tests" --nologo
-          dotnet build "$GENERATORS_DIR/Aspid.Core.HSM.Runtime" --nologo
 
       # Rebuilding in Release re-deploys the DLL into the package checkout (Directory.Build.targets); a clean
       # `git diff` then proves the committed DLL was built from the sources being released.
