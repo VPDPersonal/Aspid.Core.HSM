@@ -4,3 +4,6 @@
 # Claude Code: personal settings and app worktrees
 .claude/settings.local.json
 .claude/worktrees/
+
+# hsm-analyzer MCP server dependencies
+.claude/mcp-servers/hsm-analyzer/node_modules/
