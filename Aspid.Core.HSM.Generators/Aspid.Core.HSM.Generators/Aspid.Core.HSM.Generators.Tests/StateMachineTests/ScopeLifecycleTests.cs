@@ -1,15 +1,45 @@
 using System;
+using System.Collections.Generic;
 using Xunit;
 
 namespace Aspid.Core.HSM.Generators.Tests.StateMachineTests;
 
+/// <summary>
+/// Minimal hierarchical container: services and state creators registered in a scope are visible to its
+/// child scopes, and a state is always constructed against the scope it is resolved from.
+/// </summary>
 public class TestScope : IStateScope
 {
+    private readonly Dictionary<Type, object> _services = new();
+    private readonly Dictionary<Type, Func<TestScope, IState>> _stateCreators = new();
+
     public IStateScope? Parent { get; }
     public bool IsDisposed { get; private set; }
     public int ChildScopeCount { get; private set; }
 
     public TestScope(IStateScope? parent = null) => Parent = parent;
+
+    public void Register<TService>(TService service) where TService : class =>
+        _services[typeof(TService)] = service;
+
+    public TService? Get<TService>() where TService : class
+    {
+        Assert.False(IsDisposed, "Resolved from a disposed scope.");
+
+        return _services.TryGetValue(typeof(TService), out var service)
+            ? (TService)service
+            : (Parent as TestScope)?.Get<TService>();
+    }
+
+    public void RegisterState<TState>(Func<TestScope, TState> creator) where TState : IState =>
+        _stateCreators[typeof(TState)] = scope => creator(scope);
+
+    public IState? Resolve(Type stateType) => ResolveFrom(stateType, this);
+
+    private IState? ResolveFrom(Type stateType, TestScope origin) =>
+        _stateCreators.TryGetValue(stateType, out var creator)
+            ? creator(origin)
+            : (Parent as TestScope)?.ResolveFrom(stateType, origin);
 
     public IStateScope CreateChildScope()
     {

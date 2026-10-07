@@ -36,6 +36,13 @@ namespace Aspid.Core.HSM
 
         #region TransitionTo (sync)
         /// <inheritdoc />
+        /// <remarks>
+        /// A failure inside the state change itself stops it midway, as in <see cref="ChangeState{TState}"/>:
+        /// exited states stay exited, and <see cref="OnChangedState"/> still runs before the exception propagates.
+        /// </remarks>
+        /// <exception cref="AggregateException">
+        /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// </exception>
         public void TransitionTo<TTarget>() where TTarget : IState =>
             TransitionTo(typeof(TTarget));
 
@@ -96,6 +103,13 @@ namespace Aspid.Core.HSM
 
         #region TransitionVia (sync)
         /// <inheritdoc />
+        /// <remarks>
+        /// A failure inside the state change itself stops it midway, as in <see cref="ChangeState{TState}"/>:
+        /// exited states stay exited, and <see cref="OnChangedState"/> still runs before the exception propagates.
+        /// </remarks>
+        /// <exception cref="AggregateException">
+        /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
+        /// </exception>
         public void TransitionVia<TTransition>() where TTransition : ITransition =>
             TransitionVia(typeof(TTransition));
 
@@ -284,9 +298,7 @@ namespace Aspid.Core.HSM
         /// <returns>The transitions found along the path, or <c>null</c> if none were.</returns>
         private List<ITransition>? ResolveTransitionChain(Type targetType, out bool isComplete)
         {
-            // Build the target type chain by walking IChildState.ParentState
-            _targetTypeChainBuffer.Clear();
-            BuildTypeChain(targetType, _targetTypeChainBuffer);
+            _stateFactory.BuildTypeChain(targetType, _targetTypeChainBuffer);
 
             // Find diverge index by comparing current chain types with target chain types
             var currentCount = _currentStates.Count;
@@ -330,35 +342,6 @@ namespace Aspid.Core.HSM
 
             isComplete = foundSegments == requiredSegments;
             return chain;
-        }
-
-        private static void BuildTypeChain(Type leafType, List<Type> result)
-        {
-            if (TryGetParentStateType(leafType, out var parentType))
-                BuildTypeChain(parentType, result);
-
-            result.Add(leafType);
-        }
-
-        /// <summary>
-        /// Reads a state's parent type from its <see cref="IChildState{T}"/> interface without
-        /// instantiating it, so DI states (no public parameterless constructor) resolve correctly
-        /// and no throwaway instances / constructor side effects are produced.
-        /// </summary>
-        private static bool TryGetParentStateType(Type stateType, out Type parentType)
-        {
-            foreach (var contract in stateType.GetInterfaces())
-            {
-                if (contract.IsGenericType &&
-                    contract.GetGenericTypeDefinition() == typeof(IChildState<>))
-                {
-                    parentType = contract.GetGenericArguments()[0];
-                    return true;
-                }
-            }
-
-            parentType = null!;
-            return false;
         }
 
         #endregion

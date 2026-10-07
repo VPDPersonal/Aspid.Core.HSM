@@ -22,11 +22,31 @@ public class TestStateFactory : StateFactory
         _stateCreators[typeof(TState)] = () => creator();
     }
 
-    protected override IState CreateStateInternal(Type type)
+    /// <summary>The scope each state was created with, in creation order.</summary>
+    public List<(Type Type, IStateScope? Scope)> CreatedWithScope { get; } = [];
+
+    /// <summary>Runs on every new state scope, like a DI installer registering into it.</summary>
+    public Action<Type, TestScope>? ScopeInstaller { get; set; }
+
+    protected override IState CreateStateInternal(Type type, IStateScope? scope)
     {
-        return _stateCreators.TryGetValue(type, out var creator) 
+        CreatedWithScope.Add((type, scope));
+
+        if (scope is TestScope testScope && testScope.Resolve(type) is { } resolved)
+            return resolved;
+
+        return _stateCreators.TryGetValue(type, out var creator)
             ? creator()
             : throw new InvalidOperationException($"State of type {type} is not registered.");
+    }
+
+    protected override IStateScope? CreateScopeForState(Type stateType, IStateScope? parentScope)
+    {
+        var scope = base.CreateScopeForState(stateType, parentScope);
+        if (scope is TestScope testScope)
+            ScopeInstaller?.Invoke(stateType, testScope);
+
+        return scope;
     }
 
     protected override void ReleaseInternal(IState state) =>
