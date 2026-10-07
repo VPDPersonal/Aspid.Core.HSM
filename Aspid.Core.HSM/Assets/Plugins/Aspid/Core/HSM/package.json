@@ -14,7 +14,7 @@
   "samples": [
     {
       "displayName": "Game Loop",
-      "description": "Complete game loop sample: state hierarchy, transitions with guards, async loading, extensions, scopes, and extension points.",
+      "description": "Complete game loop sample: state hierarchy, transitions with guards, async loading, extensions, scopes, and extension points. Needs the Input System package (com.unity.inputsystem).",
       "path": "Samples~/GameLoop"
     }
   ]

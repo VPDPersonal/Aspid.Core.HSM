@@ -110,23 +110,24 @@ jobs:
 
           echo "CHANGELOG section for $VERSION extracted ($(echo "$NOTES" | wc -l) lines)."
 
+      # The SDK pinned in global.json builds the DLL, the same one that built the committed one.
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
-      - name: Build generator
-        run: dotnet build "$GENERATOR_PROJECT" -c Release
-
-      - name: Verify deployed generator DLL is present
+      # Rebuilding in Release re-deploys the DLL into the package checkout (Directory.Build.targets); a clean
+      # `git diff` then proves the committed DLL was built from the sources being released.
+      - name: Verify the committed generator DLL matches the sources
         run: |
           set -euo pipefail
-          DEPLOYED="$PACKAGE_PATH/Aspid.Core.HSM.Generators.dll"
-          if [[ ! -s "$DEPLOYED" ]]; then
-            echo "::error file=$DEPLOYED::Generator DLL is missing from the package. Run 'dotnet build -c Release' on $GENERATOR_PROJECT and commit the updated DLL before releasing."
+          dotnet build "$GENERATOR_PROJECT" -c Release
+          DLL="$PACKAGE_PATH/Aspid.Core.HSM.Generators.dll"
+          if ! git diff --exit-code --stat -- "$DLL"; then
+            echo "::error file=$DLL::The committed generator DLL does not match a fresh Release build of the sources. Run 'dotnet build -c Release' on $GENERATOR_PROJECT with the SDK from global.json and commit the DLL before releasing."
             exit 1
           fi
-          echo "Deployed generator DLL: $(stat -c '%s bytes' "$DEPLOYED")"
+          echo "The committed generator DLL matches a fresh Release build."
 
       - name: Create and push release tag
         if: github.event_name == 'workflow_dispatch'
