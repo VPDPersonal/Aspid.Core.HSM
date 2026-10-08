@@ -188,15 +188,27 @@ jobs:
       # Rebuilding in Release re-deploys the DLL into the package checkout (Directory.Build.targets); a clean
       # `git diff` then proves the committed DLL was built from the sources being released.
       - name: Verify the committed generator DLL matches the sources
+        id: verify-dll
         run: |
           set -euo pipefail
           dotnet build "$GENERATORS_DIR/Aspid.Core.HSM.Generators" -c Release --nologo
           DLL="$PACKAGE_PATH/Aspid.Core.HSM.Generators.dll"
           if ! git diff --exit-code --stat -- "$DLL"; then
-            echo "::error file=$DLL::The committed generator DLL does not match a fresh Release build of the sources. Run 'dotnet build -c Release' in $GENERATORS_DIR/Aspid.Core.HSM.Generators with the SDK from global.json and commit the DLL before releasing."
+            echo "mismatch=true" >> "$GITHUB_OUTPUT"
+            echo "::error file=$DLL::The committed generator DLL does not match a fresh Release build of the sources. Commit the DLL from the generator-dll artifact of this run, or run 'dotnet build -c Release' in $GENERATORS_DIR/Aspid.Core.HSM.Generators with the SDK from global.json, on LF sources."
             exit 1
           fi
           echo "The committed generator DLL matches a fresh Release build."
+
+      # The SDK, the OS and the line endings of the sources all change the bytes, so a DLL built on a contributor's
+      # machine can miss even when the sources match. This one is the build the check expects: commit it as is.
+      - name: Upload the generator DLL the check expects
+        if: failure() && steps.verify-dll.outputs.mismatch == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: generator-dll
+          path: ${{ env.PACKAGE_PATH }}/Aspid.Core.HSM.Generators.dll
+          if-no-files-found: error
 
       # The package CHANGELOG.md and its .meta are not in git. They are generated and committed here, so the subtree
       # split below publishes them. The commit stays in this runner: the release tag points at $GITHUB_SHA.
