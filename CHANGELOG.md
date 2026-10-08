@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1-alpha.2] — 2026-10-08
+
 ### Breaking
 
 - **A state is created inside its own scope.** The whole new chain used to be constructed before the first `Enter`, so a state's scope — and its new ancestors' scopes — did not exist yet when its constructor ran, and it could not depend on anything its ancestors registered. States are now created one at a time, right before each is entered: the state's scope is activated first, as a child of the nearest active ancestor's scope (or reused for `[ScopeLifetime(Cached)]`), and the state is resolved from it. A cached scope is disposed together with the parent scope it was created under, so a cached state under a transient parent gets a new scope under the parent's new one on re-entry. `StateFactory.CreateStateInternal(Type)` is replaced by `CreateStateInternal(Type type, IStateScope? scope)`; resolve from `scope` to see the ancestors' registrations. If creation throws, the scope it was given is released. A synchronous change is therefore no longer atomic when a constructor throws: the states below the diverge point have already exited and stay exited, and the chain ends at the last state entered, or at `EmptyState` when none is left. `OnChangedState` and the extension auto-detach now run on that path too, for `ChangeState`, `TransitionTo` and `TransitionVia`. If that cleanup throws as well, the call throws an `AggregateException` with the original exception first, instead of the original exception.
@@ -89,5 +91,6 @@ Three Roslyn incremental generators, each triggered via an attribute on a `parti
 - Dependency on [UniTask](https://github.com/Cysharp/UniTask) for the async enter/exit controllers.
 - **Game Loop** sample: a full state hierarchy with guarded transitions, async loading, extensions, scopes and extension points.
 
-[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.1...HEAD
+[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.2...HEAD
+[0.0.1-alpha.2]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.2
 [0.0.1-alpha.1]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.1
