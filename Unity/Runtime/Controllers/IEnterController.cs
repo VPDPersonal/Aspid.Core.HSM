@@ -29,6 +29,10 @@ namespace Aspid.Core.HSM
     /// A state change requested here is a new transition, not a redirect of the finished one. To wait for an event,
     /// start the wait here and pass it <c>stateLifetime</c>.
     /// </para>
+    /// <para>
+    /// Only states of the active chain are notified. An <see cref="IExtensionState"/> is attached outside any transition,
+    /// so it gets neither <see cref="OnEntered"/> nor a lifetime; use its enter and exit controllers instead.
+    /// </para>
     /// </remarks>
     public interface IEnteredController : IController
     {
