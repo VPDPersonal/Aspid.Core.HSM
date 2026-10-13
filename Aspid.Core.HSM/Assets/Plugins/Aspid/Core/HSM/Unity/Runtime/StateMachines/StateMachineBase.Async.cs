@@ -55,6 +55,10 @@ namespace Aspid.Core.HSM
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
         public async UniTask ChangeStateAsync(Type stateType, CancellationToken cancellationToken = default)
         {
+            // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
+            if (_isDisposed)
+                return;
+
             ThrowIfSyncChangeInProgress();
 
             if (!IsStateEnabled(stateType))
@@ -94,9 +98,11 @@ namespace Aspid.Core.HSM
             var unwound = new UniTaskCompletionSource();
             _activeTransitionCts = linked;
             _activeTransitionUnwound = unwound.Task;
+            var succeeded = false;
             try
             {
                 await ChangeStateCoreAsync(stateType, linked.Token);
+                succeeded = true;
             }
             finally
             {
@@ -106,8 +112,18 @@ namespace Aspid.Core.HSM
                     _activeTransitionUnwound = default;
                 }
 
-                // Signal last: a waiting superseder resumes inside this call and must find the machine idle.
-                unwound.TrySetResult();
+                try
+                {
+                    // IsTransitioning is false here. Notified before a waiting superseder resumes, so the entries of
+                    // this completed transition are consumed by it and cannot wait for the superseder's outcome.
+                    if (succeeded)
+                        NotifyEntered();
+                }
+                finally
+                {
+                    // Signal last: a waiting superseder resumes inside this call and must find the machine idle.
+                    unwound.TrySetResult();
+                }
             }
         }
 
@@ -119,6 +135,7 @@ namespace Aspid.Core.HSM
                 // with the factory or with another transition would be rewritten underneath this loop.
                 var newChain = RentTypeChainBuffer();
                 var divergeIndex = -1;
+                var awaitingEnteredStart = _awaitingEntered.Count;
                 try
                 {
                     _stateFactory.BuildTypeChain(stateType, newChain);
@@ -142,6 +159,8 @@ namespace Aspid.Core.HSM
                 }
                 catch (Exception exception)
                 {
+                    DropAwaitingEntered(awaitingEnteredStart);
+
                     // A chain that failed to build left the active chain as it was: nothing to roll back,
                     // but the change is still closed.
                     await RollBackAsync(divergeIndex >= 0 ? divergeIndex : _currentStates.Count, exception);
@@ -163,6 +182,10 @@ namespace Aspid.Core.HSM
         // exit throws is still removed and released. The change is then closed the same way as a failed sync one.
         private async UniTask RollBackAsync(int divergeIndex, Exception cause)
         {
+            // Dispose does not exit states; the ones this transition reached are disposed with the rest.
+            if (_isDisposed)
+                return;
+
             List<Exception>? failures = null;
 
             for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
@@ -184,6 +207,7 @@ namespace Aspid.Core.HSM
             var isExited = false;
             try
             {
+                EndStateLifetime(state);
                 DetachExtensionsBoundTo(state);
 
                 isExiting = true;
@@ -274,6 +298,7 @@ namespace Aspid.Core.HSM
                 }
             }
             OnEnteredState(state);
+            AwaitEntered(state);
         }
     }
 }

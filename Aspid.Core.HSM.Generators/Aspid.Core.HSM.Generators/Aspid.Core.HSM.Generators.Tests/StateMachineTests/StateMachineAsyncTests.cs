@@ -28,6 +28,26 @@ public class StateMachineAsyncTests
         Assert.Contains(asyncState, stateMachine.CurrentStates);
     }
 
+    // Code that holds the machine as IStateMachine used to reach only TransitionToAsync.
+    [Fact]
+    public async Task ChangeStateAsync_ThroughTheInterface_AwaitsAsyncEnter()
+    {
+        var factory = new TestStateFactory();
+        var asyncState = new AsyncEnterTestState();
+        factory.RegisterState(creator: () => asyncState);
+        IStateMachine stateMachine = new TestableStateMachine(factory);
+
+        var task = stateMachine.ChangeStateAsync<AsyncEnterTestState>();
+        Assert.True(stateMachine.IsTransitioning);
+
+        asyncState.CompleteEnter();
+        await task;
+
+        Assert.False(stateMachine.IsTransitioning);
+        Assert.Equal(1, asyncState.AsyncEnterCompletedCount);
+        Assert.Same(asyncState, Assert.Single(stateMachine.CurrentStates));
+    }
+
     [Fact]
     public async Task ChangeStateAsync_ReentrantCall_CancelsPrevious()
     {

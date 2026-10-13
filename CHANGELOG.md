@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A synchronous `ChangeState` into a state with an async-only enter or exit throws.** A `[ControllerGroup]` with one async enter controller implements only `IAsyncEnterController`, so `ChangeState` entered it without calling any of its enter controllers, and an async-only exit was skipped the same way. `ChangeState`, `TransitionTo` and `TransitionVia` now check the whole path first and throw `InvalidOperationException` naming the state and pointing to `ChangeStateAsync`; the chain is left unchanged, and `TransitionTo` / `TransitionVia` throw before any transition hook runs. A state that implements both the sync and the async interface is entered as before.
+
+### Added
+
+- **`IEnteredController.OnEntered(CancellationToken stateLifetime)`**: runs once per entry into a state, after the transition that entered it has completed — the whole chain is entered and `IsTransitioning` is `false` — from root to leaf, after `ChangeState` and `ChangeStateAsync` alike. It does not run for a transition that throws, is cancelled or rolls back, nor for a state that the transition's queued follow-ups exited again. `stateLifetime` is cancelled when the state starts to exit, before its exit controllers, and on `Dispose`. A state change requested from `OnEntered` is a new transition. Stages that wait for an event (a finish, a player's choice) start the wait here instead of in `OnEnter`, where a follow-up change either threw or rolled back the transition still running. `[ControllerGroup]` dispatches it like any controller interface. An exception from `OnEntered` reaches the caller of the change after every state has been notified; the chain stays as entered. A callback registered on `stateLifetime` that throws does not stop the exit or `Dispose` that cancels it: the exception goes to `UniTaskScheduler.UnobservedTaskException`. Extension states are not notified: they attach outside any transition.
+- The Game Loop sample enters `LoadingState` with `ChangeStateAsync` and leaves it from `OnEntered`.
+- `IStateMachine.ChangeStateAsync<T>(CancellationToken)`. Async state changes were reachable only through `StateMachineBase` and `MonoStateMachine`, so code holding the interface could use only `TransitionToAsync`. A custom `IStateMachine` implementation must add the method.
+
+### Fixed
+
+- **`Dispose` cancels a running async transition.** It used to leave the transition awaiting, and its later rollback exited states whose scopes `Dispose` had destroyed. The transition is now cancelled and not rolled back: its states, the half-entered one included, get `IDisposableController.Dispose` like every other active state, and its caller gets `OperationCanceledException`. From the moment `Dispose` starts, state changes are ignored: a new request, one a `stateLifetime` callback makes while `Dispose` cancels it, a request queued before `Dispose`, and the rest of a synchronous change whose callback called `Dispose`. Such a change is closed like one that threw: `OnChangedState` still runs, and a transition gets no `OnAfterTransition`. A second `Dispose` does nothing.
+
+
 ## [0.0.1-alpha.2] — 2026-10-08
 
 ### Breaking

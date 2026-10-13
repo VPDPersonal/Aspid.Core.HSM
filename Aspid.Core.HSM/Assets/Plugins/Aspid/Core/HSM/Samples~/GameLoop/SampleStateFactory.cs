@@ -7,11 +7,18 @@ namespace Aspid.Core.HSM.Samples.GameLoop
 {
     public class SampleStateFactory : StateFactory<IState>
     {
+        private readonly IStateMachine _stateMachine;
+
+        public SampleStateFactory(IStateMachine stateMachine)
+        {
+            _stateMachine = stateMachine;
+        }
+
         protected override IState CreateStateInternal(Type type, IStateScope scope)
         {
             if (type == typeof(RootState)) return new RootState();
             if (type == typeof(MainMenuState)) return new MainMenuState();
-            if (type == typeof(LoadingState)) return new LoadingState();
+            if (type == typeof(LoadingState)) return new LoadingState(_stateMachine);
             if (type == typeof(GameplayState)) return new GameplayState();
             if (type == typeof(SinglePlayerState)) return new SinglePlayerState();
             if (type == typeof(PauseState)) return new PauseState();

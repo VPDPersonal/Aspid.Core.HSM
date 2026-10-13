@@ -2,6 +2,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Runtime.ExceptionServices;
+using Cysharp.Threading.Tasks;
 #if ENABLE_PROFILER
 using System.Text;
 using Unity.Profiling;
@@ -30,6 +32,12 @@ namespace Aspid.Core.HSM
         private int _tickedExtensionIndex = -1;
 
         private CancellationTokenSource? _activeTransitionCts;
+        private bool _isDisposed;
+
+        // IEnteredController states entered by the running operation, in enter order, each with the lifetime it was
+        // entered with. A state exited since then has had that lifetime cancelled, so it is skipped when notified.
+        private readonly List<(IState State, IEnteredController Controller, CancellationTokenSource Lifetime)> _awaitingEntered = new();
+        private readonly Dictionary<IState, CancellationTokenSource> _stateLifetimes = new();
 
         /// <inheritdoc />
         public IReadOnlyList<IState> CurrentStates => _currentStates;
@@ -115,6 +123,10 @@ namespace Aspid.Core.HSM
                 _tickedExtensionIndex = -1;
             }
 
+            // A controller that disposed the machine after requesting a change: the request dies with it.
+            if (_isDisposed)
+                _pendingRequests.Clear();
+
             if (_pendingRequests.Count > 0)
             {
                 // An async transition started later in the same tick owns the chain now. Applying the
@@ -138,7 +150,11 @@ namespace Aspid.Core.HSM
         /// midway: exited states stay exited, and the chain ends at the last state reached, or at
         /// <see cref="EmptyState"/> when none is left. <see cref="OnChangedState"/> still runs, then the exception propagates.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">An async transition is already in progress.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// An async transition is already in progress. Or a state on the path implements <see cref="IAsyncEnterController"/>
+        /// without <see cref="IEnterController"/>, or <see cref="IAsyncExitController"/> without <see cref="IExitController"/>;
+        /// the chain is then left unchanged.
+        /// </exception>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
         /// Or several extensions threw while the change detached them.
@@ -151,6 +167,10 @@ namespace Aspid.Core.HSM
         /// <param name="stateType">The target leaf state type.</param>
         public void ChangeState(Type stateType)
         {
+            // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
+            if (_isDisposed)
+                return;
+
             ThrowIfAsyncTransitionInProgress();
             Request(new PendingRequest(stateType, PendingKind.ChangeState));
         }
@@ -167,18 +187,23 @@ namespace Aspid.Core.HSM
         }
 
         // Diffs and swaps the chain with no guard checks: every caller has checked the guards already.
-        private void ChangeStateCore(Type stateType)
+        // Returns false when a callback disposed the machine midway: the change was cut short, not completed.
+        private bool ChangeStateCore(Type stateType)
         {
             OnChangingState();
             // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
             // which are free to re-enter the factory. A shared buffer would be rewritten underneath us.
             var newChain = RentTypeChainBuffer();
+            var awaitingEnteredStart = _awaitingEntered.Count;
             try
             {
                 _stateFactory.BuildTypeChain(stateType, newChain);
                 var divergeIndex = FindDivergeIndex(newChain);
+                ThrowIfPathNeedsAsync(newChain, divergeIndex);
 
-                for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+                // A callback that disposes the machine stops the change after its own state: the next one would be
+                // created in a scope that Dispose has already destroyed.
+                for (var i = _currentStates.Count - 1; i >= divergeIndex && !_isDisposed; i--)
                 {
                     ExitState(_currentStates[i]);
                     _currentStates.RemoveAt(i);
@@ -186,7 +211,7 @@ namespace Aspid.Core.HSM
 
                 // Each state is created only once its parent has been entered, so it is resolved from
                 // its own scope, a child of the parent's.
-                for (var i = divergeIndex; i < newChain.Count; i++)
+                for (var i = divergeIndex; i < newChain.Count && !_isDisposed; i++)
                 {
                     var state = _stateFactory.CreateState(newChain[i]);
                     _currentStates.Add(state);
@@ -195,6 +220,7 @@ namespace Aspid.Core.HSM
             }
             catch (Exception cause)
             {
+                DropAwaitingEntered(awaitingEnteredStart);
                 CloseFailedChange(cause);
                 throw;
             }
@@ -203,9 +229,60 @@ namespace Aspid.Core.HSM
                 ReturnTypeChainBuffer(newChain);
             }
 
+            if (_isDisposed)
+            {
+                // Closed like a change that threw: OnChangingState keeps its pair, the chain keeps a leaf. Dispose has
+                // detached every extension already, so there is nothing to check against the leaf.
+                if (_currentStates.Count == 0)
+                    _currentStates.Add(new EmptyState());
+
+                OnChangedState();
+                return false;
+            }
+
             OnChangedState();
             AutoDetachIncompatibleExtensions();
+            return true;
         }
+
+        // A synchronous change runs only IEnterController and IExitController. A state whose enter or exit is
+        // async only — a [ControllerGroup] with one async controller implements only the async interface — would be
+        // passed through without its controllers, so the whole path is checked before anything changes.
+        private void ThrowIfPathNeedsAsync(List<Type> newChain, int divergeIndex)
+        {
+            for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+            {
+                var state = _currentStates[i];
+                if (state is IAsyncExitController && state is not IExitController)
+                    throw AsyncOnlyState(state.GetType(), nameof(IAsyncExitController));
+            }
+
+            for (var i = divergeIndex; i < newChain.Count; i++)
+            {
+                var type = newChain[i];
+                if (typeof(IAsyncEnterController).IsAssignableFrom(type) && !typeof(IEnterController).IsAssignableFrom(type))
+                    throw AsyncOnlyState(type, nameof(IAsyncEnterController));
+            }
+        }
+
+        // The same check for callers that run transition hooks first: it has to fail before OnBeforeTransition.
+        private void ThrowIfChangeNeedsAsync(Type stateType)
+        {
+            var newChain = RentTypeChainBuffer();
+            try
+            {
+                _stateFactory.BuildTypeChain(stateType, newChain);
+                ThrowIfPathNeedsAsync(newChain, FindDivergeIndex(newChain));
+            }
+            finally
+            {
+                ReturnTypeChainBuffer(newChain);
+            }
+        }
+
+        private static InvalidOperationException AsyncOnlyState(Type stateType, string asyncController) =>
+            new($"'{stateType.Name}' implements {asyncController} without its synchronous counterpart, so a synchronous " +
+                $"state change would skip its controllers. Use ChangeStateAsync, TransitionToAsync or TransitionViaAsync.");
 
         // A change that throws midway keeps the states it reached: exited states cannot be entered back.
         // Close it anyway, so OnChangingState/OnChangedState stay paired and extensions are checked against
@@ -254,7 +331,7 @@ namespace Aspid.Core.HSM
         protected virtual void OnChangingState() { }
 
         /// <summary>
-        /// Called after the exit/enter sequence ends, also when a state in it throws.
+        /// Called after the exit/enter sequence ends, also when a state in it throws or a callback disposes the machine.
         /// </summary>
         protected virtual void OnChangedState() { }
         #endregion
@@ -300,14 +377,23 @@ namespace Aspid.Core.HSM
         private void RunToCompletion(PendingRequest request)
         {
             _isChangingState = true;
+            var awaitingEnteredStart = _awaitingEntered.Count;
             try
             {
                 Apply(request);
 
                 // Requests queued by Enter/Exit callbacks are drained here, in the order they were made.
                 // Guards are resolved at apply time, so each one sees the chain the previous one left behind.
-                while (_pendingRequests.Count > 0)
+                // A callback that disposed the machine drops what is still queued.
+                while (!_isDisposed && _pendingRequests.Count > 0)
                     Apply(_pendingRequests.Dequeue());
+            }
+            catch
+            {
+                // The queued requests form one operation: when one of them fails, none of them notifies, also not
+                // the earlier ones that succeeded. Their entries would otherwise wait for an unrelated later change.
+                DropAwaitingEntered(awaitingEnteredStart);
+                throw;
             }
             finally
             {
@@ -315,6 +401,9 @@ namespace Aspid.Core.HSM
                 // A throwing state must not leak its queued follow-ups into an unrelated later transition.
                 _pendingRequests.Clear();
             }
+
+            // After the queue is drained and the flag is down: a change requested from OnEntered runs at once.
+            NotifyEntered();
         }
 
         private void Apply(PendingRequest request)
@@ -348,6 +437,8 @@ namespace Aspid.Core.HSM
         #region Exit
         private void ExitState(IState state)
         {
+            EndStateLifetime(state);
+
             // Extensions bound to this state live in a child of its scope, which Release is about to dispose.
             DetachExtensionsBoundTo(state);
 
@@ -390,6 +481,7 @@ namespace Aspid.Core.HSM
                 state.GetController<IEnterController>()?.OnEnter();
             }
             OnEnteredState(state);
+            AwaitEntered(state);
         }
 
         /// <summary>
@@ -405,15 +497,124 @@ namespace Aspid.Core.HSM
         protected virtual void OnEnteredState(IState state) { }
         #endregion
 
+        #region Entered
+        // Gives a state that has an IEnteredController its lifetime and queues its OnEntered for the end of the operation.
+        private void AwaitEntered(IState state)
+        {
+            // Entered after a callback disposed the machine: no lifetime, since nothing would cancel or release it.
+            if (_isDisposed || state.GetController<IEnteredController>() is not { } controller)
+                return;
+
+            var lifetime = new CancellationTokenSource();
+            _stateLifetimes[state] = lifetime;
+            _awaitingEntered.Add((state, controller, lifetime));
+        }
+
+        // A change that failed does not notify the states it entered: they keep their lifetime, not their OnEntered.
+        private void DropAwaitingEntered(int start) =>
+            _awaitingEntered.RemoveRange(start, _awaitingEntered.Count - start);
+
+        private void EndStateLifetime(IState state)
+        {
+            if (!_stateLifetimes.TryGetValue(state, out var lifetime))
+                return;
+
+            _stateLifetimes.Remove(state);
+            CancelLifetime(lifetime);
+        }
+
+        // Cancel runs the callbacks registered on the token, and one of them may throw. The exit or Dispose that
+        // ends the lifetime must still complete, so the failure goes to UniTaskScheduler.UnobservedTaskException, as for a
+        // forgotten UniTask that faulted.
+        private static void CancelLifetime(CancellationTokenSource lifetime)
+        {
+            try
+            {
+                lifetime.Cancel();
+            }
+            catch (Exception exception)
+            {
+                UniTask.FromException(exception).Forget();
+            }
+            finally
+            {
+                lifetime.Dispose();
+            }
+        }
+
+        // Called once an operation has completed and no transition is running. Takes the whole list first: an
+        // OnEntered that changes state notifies its own entries in that nested call, while this one goes on with the
+        // rest. Every state is notified before the first exception goes out.
+        private void NotifyEntered()
+        {
+            // A disposed machine notifies nobody; a state whose OnEntered disposes it stops the rest the same way,
+            // since Dispose takes every lifetime out.
+            if (_isDisposed || _awaitingEntered.Count == 0)
+                return;
+
+            var awaiting = _awaitingEntered.ToArray();
+            _awaitingEntered.Clear();
+
+            List<Exception>? failures = null;
+            foreach (var (state, controller, lifetime) in awaiting)
+            {
+                // Exited since: its lifetime was cancelled and removed, or replaced if the state was entered again.
+                if (!_stateLifetimes.TryGetValue(state, out var current) || current != lifetime)
+                    continue;
+
+                try
+                {
+                    controller.OnEntered(lifetime.Token);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= new List<Exception>()).Add(exception);
+                }
+            }
+
+            if (failures is { Count: 1 })
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+
+            if (failures is not null)
+                throw new AggregateException("Several OnEntered callbacks threw.", failures);
+        }
+
+        private void EndAllStateLifetimes()
+        {
+            // Cancel runs the callbacks of each token, and they may reach back into the machine: take the lifetimes out first.
+            var lifetimes = new CancellationTokenSource[_stateLifetimes.Count];
+            _stateLifetimes.Values.CopyTo(lifetimes, 0);
+            _stateLifetimes.Clear();
+            _awaitingEntered.Clear();
+
+            foreach (var lifetime in lifetimes)
+                CancelLifetime(lifetime);
+        }
+        #endregion
+
         #region Dispose
         /// <summary>
-        /// Detaches all extensions, disposes all active states via <see cref="IDisposableController"/>,
-        /// and disposes all active and cached state scopes.
+        /// Cancels a running async transition, detaches all extensions, disposes all active states via
+        /// <see cref="IDisposableController"/>, and disposes all active and cached state scopes.
         /// </summary>
+        /// <remarks>
+        /// States are not exited, and neither is a cancelled transition rolled back: its states, the half-entered one
+        /// included, are disposed with the rest, and its caller gets <see cref="OperationCanceledException"/>.
+        /// From the moment it starts, state changes are ignored, also those requested by a callback it triggers.
+        /// A second call does nothing.
+        /// </remarks>
         public void Dispose()
         {
+            if (_isDisposed)
+                return;
+
+            _isDisposed = true;
             Disposing();
             {
+                // Before the states are disposed: the cancelled core unwinds here when its callback ends synchronously.
+                _activeTransitionCts?.Cancel();
+                EndAllStateLifetimes();
+
                 for (int i = _activeExtensions.Count - 1; i >= 0; i--)
                     DetachExtensionAt(i);
 
