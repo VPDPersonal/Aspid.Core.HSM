@@ -78,6 +78,24 @@ public sealed class EnFailingRedirectLeaf : EnteredLoggingState, IChildState<EnR
     public void OnEnter() => Machine!.ChangeState<EnThrowingLeaf>();
 }
 
+/// <summary>Queues a change from its sync enter, then disposes the machine.</summary>
+public sealed class EnDisposingLeaf : EnteredLoggingState, IChildState<EnRoot>, IEnterController
+{
+    public void OnEnter()
+    {
+        Machine!.ChangeState<EnSiblingLeaf>();
+        ((IDisposable)Machine).Dispose();
+    }
+}
+
+/// <summary>Disposes the machine from its sync enter, before its child is created.</summary>
+public sealed class EnDisposingRoot : EnteredLoggingState, IEnterController
+{
+    public void OnEnter() => ((IDisposable)Machine!).Dispose();
+}
+
+public sealed class EnUnderDisposingRoot : EnteredLoggingState, IChildState<EnDisposingRoot>;
+
 public sealed class EnThrowingLeaf : IState, IChildState<EnRoot>
 {
     public EnThrowingLeaf() => throw new InvalidOperationException("constructor failed");
@@ -97,13 +115,15 @@ public class EnteredControllerTests
     private readonly EnAsyncLeaf _asyncLeaf = new();
     private readonly EnRedirectingLeaf _redirecting = new();
     private readonly EnFailingRedirectLeaf _failingRedirect = new();
+    private readonly EnDisposingLeaf _disposingLeaf = new();
+    private readonly EnDisposingRoot _disposingRoot = new();
     private readonly TestStateFactory _factory = new();
     private readonly TestableStateMachine _sm;
 
     public EnteredControllerTests()
     {
         _sm = new TestableStateMachine(_factory);
-        foreach (var state in new EnteredLoggingState[] { _root, _leaf, _sibling, _other, _asyncLeaf, _redirecting, _failingRedirect })
+        foreach (var state in new EnteredLoggingState[] { _root, _leaf, _sibling, _other, _asyncLeaf, _redirecting, _failingRedirect, _disposingLeaf, _disposingRoot })
         {
             state.Log = _log;
             state.Machine = _sm;
@@ -116,6 +136,9 @@ public class EnteredControllerTests
         _factory.RegisterState(() => _asyncLeaf);
         _factory.RegisterState(() => _redirecting);
         _factory.RegisterState(() => _failingRedirect);
+        _factory.RegisterState(() => _disposingLeaf);
+        _factory.RegisterState(() => _disposingRoot);
+        _factory.RegisterState(() => new EnUnderDisposingRoot());
         _factory.RegisterState(() => new EnThrowingLeaf());
     }
 
@@ -258,6 +281,46 @@ public class EnteredControllerTests
 
         Assert.Equal(1, _sm.DisposedCallCount);
         Assert.Equal(new IState[] { _root, _leaf }, _sm.CurrentStates.ToArray());
+        Assert.DoesNotContain("enter EnOtherRoot", _log);
+    }
+
+    // A request queued before Dispose used to run after it: a new scope and lifetime nobody released, an OnEntered on
+    // a disposed machine.
+    [Fact]
+    public void A_change_queued_before_Dispose_is_dropped()
+    {
+        _sm.ChangeState<EnDisposingLeaf>();
+
+        Assert.Equal(new IState[] { _root, _disposingLeaf }, _sm.CurrentStates.ToArray());
+        Assert.DoesNotContain("enter EnSiblingLeaf", _log);
+        Assert.Equal(0, _root.EnteredCalled);
+        Assert.Equal(0, _disposingLeaf.EnteredCalled);
+    }
+
+    [Fact]
+    public void Dispose_from_an_enter_stops_the_change_before_the_next_state()
+    {
+        _sm.ChangeState<EnUnderDisposingRoot>();
+
+        Assert.Same(_disposingRoot, Assert.Single(_sm.CurrentStates));
+        Assert.DoesNotContain(_factory.CreatedWithScope, entry => entry.Type == typeof(EnUnderDisposingRoot));
+        Assert.Equal(0, _disposingRoot.EnteredCalled);
+    }
+
+    [Fact]
+    public void A_change_deferred_from_a_tick_that_then_disposes_is_dropped()
+    {
+        var ticker = new TickingRootState(() =>
+        {
+            _sm.ChangeState<EnOtherRoot>();
+            _sm.Dispose();
+        });
+        _factory.RegisterState(() => ticker);
+        _sm.ChangeState<TickingRootState>();
+
+        _sm.CallUpdate(0.016f);
+
+        Assert.Same(ticker, Assert.Single(_sm.CurrentStates));
         Assert.DoesNotContain("enter EnOtherRoot", _log);
     }
 

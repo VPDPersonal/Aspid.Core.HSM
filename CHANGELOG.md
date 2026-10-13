@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`Dispose` cancels a running async transition.** It used to leave the transition awaiting, and its later rollback exited states whose scopes `Dispose` had destroyed. The transition is now cancelled and not rolled back: its states, the half-entered one included, get `IDisposableController.Dispose` like every other active state, and its caller gets `OperationCanceledException`. From the moment `Dispose` starts, state changes are ignored, including one that a `stateLifetime` callback requests while `Dispose` cancels it. A second `Dispose` does nothing.
+- **`Dispose` cancels a running async transition.** It used to leave the transition awaiting, and its later rollback exited states whose scopes `Dispose` had destroyed. The transition is now cancelled and not rolled back: its states, the half-entered one included, get `IDisposableController.Dispose` like every other active state, and its caller gets `OperationCanceledException`. From the moment `Dispose` starts, state changes are ignored: a new request, one a `stateLifetime` callback makes while `Dispose` cancels it, a request queued before `Dispose`, and the rest of a synchronous change whose callback called `Dispose`. A second `Dispose` does nothing.
 
 
 ## [0.0.1-alpha.2] — 2026-10-08
