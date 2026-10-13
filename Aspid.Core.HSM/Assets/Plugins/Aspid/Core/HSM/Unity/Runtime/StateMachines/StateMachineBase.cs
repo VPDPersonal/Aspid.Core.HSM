@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Runtime.ExceptionServices;
+using Cysharp.Threading.Tasks;
 #if ENABLE_PROFILER
 using System.Text;
 using Unity.Profiling;
@@ -241,6 +242,21 @@ namespace Aspid.Core.HSM
             }
         }
 
+        // The same check for callers that run transition hooks first: it has to fail before OnBeforeTransition.
+        private void ThrowIfChangeNeedsAsync(Type stateType)
+        {
+            var newChain = RentTypeChainBuffer();
+            try
+            {
+                _stateFactory.BuildTypeChain(stateType, newChain);
+                ThrowIfPathNeedsAsync(newChain, FindDivergeIndex(newChain));
+            }
+            finally
+            {
+                ReturnTypeChainBuffer(newChain);
+            }
+        }
+
         private static InvalidOperationException AsyncOnlyState(Type stateType, string asyncController) =>
             new($"'{stateType.Name}' implements {asyncController} without its synchronous counterpart, so a synchronous " +
                 $"state change would skip its controllers. Use ChangeStateAsync, TransitionToAsync or TransitionViaAsync.");
@@ -338,6 +354,7 @@ namespace Aspid.Core.HSM
         private void RunToCompletion(PendingRequest request)
         {
             _isChangingState = true;
+            var awaitingEnteredStart = _awaitingEntered.Count;
             try
             {
                 Apply(request);
@@ -346,6 +363,13 @@ namespace Aspid.Core.HSM
                 // Guards are resolved at apply time, so each one sees the chain the previous one left behind.
                 while (_pendingRequests.Count > 0)
                     Apply(_pendingRequests.Dequeue());
+            }
+            catch
+            {
+                // The queued requests form one operation: when one of them fails, none of them notifies, also not
+                // the earlier ones that succeeded. Their entries would otherwise wait for an unrelated later change.
+                DropAwaitingEntered(awaitingEnteredStart);
+                throw;
             }
             finally
             {
@@ -471,8 +495,26 @@ namespace Aspid.Core.HSM
                 return;
 
             _stateLifetimes.Remove(state);
-            lifetime.Cancel();
-            lifetime.Dispose();
+            CancelLifetime(lifetime);
+        }
+
+        // Cancel runs the callbacks registered on the token, and one of them may throw. The exit or Dispose that
+        // ends the lifetime must still complete, so the failure goes to UniTaskScheduler.UnobservedTaskException, as for a
+        // forgotten UniTask that faulted.
+        private static void CancelLifetime(CancellationTokenSource lifetime)
+        {
+            try
+            {
+                lifetime.Cancel();
+            }
+            catch (Exception exception)
+            {
+                UniTask.FromException(exception).Forget();
+            }
+            finally
+            {
+                lifetime.Dispose();
+            }
         }
 
         // Called once an operation has completed and no transition is running. Takes the whole list first: an
@@ -513,10 +555,7 @@ namespace Aspid.Core.HSM
         private void EndAllStateLifetimes()
         {
             foreach (var lifetime in _stateLifetimes.Values)
-            {
-                lifetime.Cancel();
-                lifetime.Dispose();
-            }
+                CancelLifetime(lifetime);
 
             _stateLifetimes.Clear();
             _awaitingEntered.Clear();

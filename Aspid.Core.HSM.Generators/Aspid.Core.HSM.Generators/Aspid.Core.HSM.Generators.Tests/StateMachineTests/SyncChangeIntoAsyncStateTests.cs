@@ -46,6 +46,17 @@ public sealed class SyncAndAsyncEnterState : BaseTestState, IEnterController, IA
     public UniTask OnEnterAsync(CancellationToken cancellationToken) => UniTask.CompletedTask;
 }
 
+public sealed class SimpleToAsyncOnlyTransition : ITransition<SimpleTestState, AsyncOnlyEnterState>
+{
+    public int BeforeCount { get; private set; }
+
+    public int AfterCount { get; private set; }
+
+    public void OnBeforeTransition() => BeforeCount++;
+
+    public void OnAfterTransition() => AfterCount++;
+}
+
 #endregion
 
 // A synchronous change used to pass through a state whose enter or exit is async only, without calling a single
@@ -116,6 +127,35 @@ public class SyncChangeIntoAsyncStateTests
 
         Assert.Throws<InvalidOperationException>(() => _sm.TransitionTo<AsyncOnlyEnterState>());
 
+        Assert.Same(_simple, Assert.Single(_sm.CurrentStates));
+    }
+
+    // The check used to run inside the change, after OnBeforeTransition: the hook ran and its OnAfterTransition never did.
+    [Fact]
+    public void TransitionTo_throws_before_the_transition_hooks()
+    {
+        var transition = new SimpleToAsyncOnlyTransition();
+        _sm.RegisterTransition(transition);
+        _sm.ChangeState<SimpleTestState>();
+        var changing = _sm.ChangingStateCallCount;
+
+        Assert.Throws<InvalidOperationException>(() => _sm.TransitionTo<AsyncOnlyEnterState>());
+
+        Assert.Equal(0, transition.BeforeCount);
+        Assert.Equal(0, transition.AfterCount);
+        Assert.Equal(changing, _sm.ChangingStateCallCount);
+    }
+
+    [Fact]
+    public void TransitionVia_throws_before_the_transition_hooks()
+    {
+        var transition = new SimpleToAsyncOnlyTransition();
+        _sm.RegisterTransition(transition);
+        _sm.ChangeState<SimpleTestState>();
+
+        Assert.Throws<InvalidOperationException>(() => _sm.TransitionVia<SimpleToAsyncOnlyTransition>());
+
+        Assert.Equal(0, transition.BeforeCount);
         Assert.Same(_simple, Assert.Single(_sm.CurrentStates));
     }
 

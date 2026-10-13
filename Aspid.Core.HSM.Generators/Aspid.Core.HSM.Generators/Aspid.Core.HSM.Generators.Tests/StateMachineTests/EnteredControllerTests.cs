@@ -72,6 +72,12 @@ public sealed class EnRedirectingLeaf : EnteredLoggingState, IChildState<EnRoot>
     public void OnEnter() => Machine!.ChangeState<EnSiblingLeaf>();
 }
 
+/// <summary>Queues a change from its sync enter into a state whose constructor throws.</summary>
+public sealed class EnFailingRedirectLeaf : EnteredLoggingState, IChildState<EnRoot>, IEnterController
+{
+    public void OnEnter() => Machine!.ChangeState<EnThrowingLeaf>();
+}
+
 public sealed class EnThrowingLeaf : IState, IChildState<EnRoot>
 {
     public EnThrowingLeaf() => throw new InvalidOperationException("constructor failed");
@@ -90,13 +96,14 @@ public class EnteredControllerTests
     private readonly EnOtherRoot _other = new();
     private readonly EnAsyncLeaf _asyncLeaf = new();
     private readonly EnRedirectingLeaf _redirecting = new();
+    private readonly EnFailingRedirectLeaf _failingRedirect = new();
     private readonly TestStateFactory _factory = new();
     private readonly TestableStateMachine _sm;
 
     public EnteredControllerTests()
     {
         _sm = new TestableStateMachine(_factory);
-        foreach (var state in new EnteredLoggingState[] { _root, _leaf, _sibling, _other, _asyncLeaf, _redirecting })
+        foreach (var state in new EnteredLoggingState[] { _root, _leaf, _sibling, _other, _asyncLeaf, _redirecting, _failingRedirect })
         {
             state.Log = _log;
             state.Machine = _sm;
@@ -108,6 +115,7 @@ public class EnteredControllerTests
         _factory.RegisterState(() => _other);
         _factory.RegisterState(() => _asyncLeaf);
         _factory.RegisterState(() => _redirecting);
+        _factory.RegisterState(() => _failingRedirect);
         _factory.RegisterState(() => new EnThrowingLeaf());
     }
 
@@ -174,6 +182,68 @@ public class EnteredControllerTests
         // The root stays entered, but the change that entered it failed.
         Assert.Same(_root, Assert.Single(_sm.CurrentStates));
         Assert.Equal(0, _root.EnteredCalled);
+    }
+
+    // The first change succeeded and queued the root; the queued one failed. The root's entry used to stay behind,
+    // and the next, unrelated change notified it.
+    [Fact]
+    public void A_failed_queued_change_drops_the_whole_operations_notifications()
+    {
+        Assert.Throws<InvalidOperationException>(() => _sm.ChangeState<EnFailingRedirectLeaf>());
+        Assert.Same(_root, Assert.Single(_sm.CurrentStates));
+
+        _sm.ChangeState<EnSiblingLeaf>();
+
+        Assert.Equal(0, _root.EnteredCalled);
+        Assert.Equal(0, _failingRedirect.EnteredCalled);
+        Assert.Equal(1, _sibling.EnteredCalled);
+    }
+
+    // A callback registered on the lifetime that throws must not stop the exit or Dispose that cancels it.
+    [Fact]
+    public void A_throwing_lifetime_callback_does_not_break_the_exit()
+    {
+        var published = new List<Exception>();
+        void OnUnobserved(Exception exception) => published.Add(exception);
+        _leaf.OnEnteredAction = () => _leaf.Lifetime.Register(() => throw new InvalidOperationException("callback failed"));
+        _sm.ChangeState<EnLeaf>();
+
+        UniTaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            _sm.ChangeState<EnSiblingLeaf>();
+        }
+        finally
+        {
+            UniTaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+
+        Assert.Equal(new IState[] { _root, _sibling }, _sm.CurrentStates.ToArray());
+        Assert.Equal(1, _leaf.LifetimeCancelledInOnExit == true ? 1 : 0);
+        Assert.Contains(published, exception => exception.ToString().Contains("callback failed"));
+    }
+
+    [Fact]
+    public void A_throwing_lifetime_callback_does_not_break_Dispose()
+    {
+        var published = new List<Exception>();
+        void OnUnobserved(Exception exception) => published.Add(exception);
+        _root.OnEnteredAction = () => _root.Lifetime.Register(() => throw new InvalidOperationException("callback failed"));
+        _sm.ChangeState<EnLeaf>();
+
+        UniTaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            _sm.Dispose();
+        }
+        finally
+        {
+            UniTaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+
+        Assert.Equal(1, _sm.DisposedCallCount);
+        Assert.True(_leaf.Lifetime.IsCancellationRequested);
+        Assert.Contains(published, exception => exception.ToString().Contains("callback failed"));
     }
 
     [Fact]

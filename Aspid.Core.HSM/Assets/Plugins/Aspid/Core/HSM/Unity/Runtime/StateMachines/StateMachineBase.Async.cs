@@ -94,9 +94,11 @@ namespace Aspid.Core.HSM
             var unwound = new UniTaskCompletionSource();
             _activeTransitionCts = linked;
             _activeTransitionUnwound = unwound.Task;
+            var succeeded = false;
             try
             {
                 await ChangeStateCoreAsync(stateType, linked.Token);
+                succeeded = true;
             }
             finally
             {
@@ -106,14 +108,19 @@ namespace Aspid.Core.HSM
                     _activeTransitionUnwound = default;
                 }
 
-                // Signal last: a waiting superseder resumes inside this call and must find the machine idle.
-                unwound.TrySetResult();
+                try
+                {
+                    // IsTransitioning is false here. Notified before a waiting superseder resumes, so the entries of
+                    // this completed transition are consumed by it and cannot wait for the superseder's outcome.
+                    if (succeeded)
+                        NotifyEntered();
+                }
+                finally
+                {
+                    // Signal last: a waiting superseder resumes inside this call and must find the machine idle.
+                    unwound.TrySetResult();
+                }
             }
-
-            // Reached only when the core succeeded. IsTransitioning is false by now, unless a superseder that resumed
-            // above started a new transition: its own completion notifies, and states it exited are skipped.
-            if (_activeTransitionCts is null)
-                NotifyEntered();
         }
 
         private async UniTask ChangeStateCoreAsync(Type stateType, CancellationToken token)

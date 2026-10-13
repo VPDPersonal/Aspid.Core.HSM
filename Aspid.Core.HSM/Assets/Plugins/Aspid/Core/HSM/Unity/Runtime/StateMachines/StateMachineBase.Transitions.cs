@@ -63,6 +63,7 @@ namespace Aspid.Core.HSM
             if (!IsStateEnabled(targetType) || !IsTransitionEnabled(currentLeafType, targetType))
                 return;
 
+            ThrowIfChangeNeedsAsync(targetType);
             var transition = ResolveTransition(currentLeafType, targetType);
 
             if (transition is not null)
@@ -133,8 +134,12 @@ namespace Aspid.Core.HSM
                 return;
 
             if (!IsStateEnabled(transition.TargetState) ||
-                !IsTransitionEnabled(currentLeafType, transition.TargetState) ||
-                !transition.CanTransition())
+                !IsTransitionEnabled(currentLeafType, transition.TargetState))
+                return;
+
+            ThrowIfChangeNeedsAsync(transition.TargetState);
+
+            if (!transition.CanTransition())
                 return;
 
             transition.OnBeforeTransition();
