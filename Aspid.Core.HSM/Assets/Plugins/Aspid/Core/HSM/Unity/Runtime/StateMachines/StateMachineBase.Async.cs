@@ -55,6 +55,10 @@ namespace Aspid.Core.HSM
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
         public async UniTask ChangeStateAsync(Type stateType, CancellationToken cancellationToken = default)
         {
+            // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
+            if (_isDisposed)
+                return;
+
             ThrowIfSyncChangeInProgress();
 
             if (!IsStateEnabled(stateType))

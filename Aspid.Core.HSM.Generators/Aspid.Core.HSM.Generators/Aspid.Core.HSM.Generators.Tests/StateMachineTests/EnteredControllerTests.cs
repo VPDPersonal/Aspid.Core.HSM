@@ -246,6 +246,36 @@ public class EnteredControllerTests
         Assert.Contains(published, exception => exception.ToString().Contains("callback failed"));
     }
 
+    // A lifetime callback that changes state used to modify the lifetimes mid-iteration and abort Dispose.
+    [Fact]
+    public void A_lifetime_callback_that_changes_state_does_not_break_Dispose()
+    {
+        _root.OnEnteredAction = () => _root.Lifetime.Register(() => _sm.ChangeState<EnOtherRoot>());
+        _leaf.OnEnteredAction = () => _leaf.Lifetime.Register(() => _sm.ChangeState<EnOtherRoot>());
+        _sm.ChangeState<EnLeaf>();
+
+        _sm.Dispose();
+
+        Assert.Equal(1, _sm.DisposedCallCount);
+        Assert.Equal(new IState[] { _root, _leaf }, _sm.CurrentStates.ToArray());
+        Assert.DoesNotContain("enter EnOtherRoot", _log);
+    }
+
+    [Fact]
+    public async Task State_changes_after_Dispose_are_ignored()
+    {
+        _sm.ChangeState<EnLeaf>();
+        _sm.Dispose();
+
+        _sm.ChangeState<EnOtherRoot>();
+        _sm.TransitionTo<EnOtherRoot>();
+        await _sm.ChangeStateAsync<EnOtherRoot>();
+        await _sm.TransitionToAsync<EnOtherRoot>();
+
+        Assert.Equal(new IState[] { _root, _leaf }, _sm.CurrentStates.ToArray());
+        Assert.DoesNotContain("enter EnOtherRoot", _log);
+    }
+
     [Fact]
     public void The_lifetime_is_cancelled_before_the_exit_controllers_run()
     {

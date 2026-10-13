@@ -163,6 +163,10 @@ namespace Aspid.Core.HSM
         /// <param name="stateType">The target leaf state type.</param>
         public void ChangeState(Type stateType)
         {
+            // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
+            if (_isDisposed)
+                return;
+
             ThrowIfAsyncTransitionInProgress();
             Request(new PendingRequest(stateType, PendingKind.ChangeState));
         }
@@ -554,11 +558,14 @@ namespace Aspid.Core.HSM
 
         private void EndAllStateLifetimes()
         {
-            foreach (var lifetime in _stateLifetimes.Values)
-                CancelLifetime(lifetime);
-
+            // Cancel runs the callbacks of each token, and they may reach back into the machine: take the lifetimes out first.
+            var lifetimes = new CancellationTokenSource[_stateLifetimes.Count];
+            _stateLifetimes.Values.CopyTo(lifetimes, 0);
             _stateLifetimes.Clear();
             _awaitingEntered.Clear();
+
+            foreach (var lifetime in lifetimes)
+                CancelLifetime(lifetime);
         }
         #endregion
 
@@ -570,6 +577,7 @@ namespace Aspid.Core.HSM
         /// <remarks>
         /// States are not exited, and neither is a cancelled transition rolled back: its states, the half-entered one
         /// included, are disposed with the rest, and its caller gets <see cref="OperationCanceledException"/>.
+        /// From the moment it starts, state changes are ignored, also those requested by a callback it triggers.
         /// A second call does nothing.
         /// </remarks>
         public void Dispose()
