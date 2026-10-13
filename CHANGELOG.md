@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The exception of an async transition tells why it ended.** `ChangeStateAsync`, `TransitionToAsync` and `TransitionViaAsync` used to end with the same `OperationCanceledException` whether a newer transition superseded them, `Dispose` cut them short or their own enter cancelled itself, and a rollback failure turned any of them into an `AggregateException`. Callers guessed from `IsTransitioning`, which a fully synchronous superseder had already reset by the time the exception arrived. Now:
+  - `TransitionSupersededException` — a newer transition superseded this one. `SupersedingState` is its target state type; `RollbackExceptions` holds what the rollback threw, instead of an `AggregateException`.
+  - `StateMachineDisposedException` — `Dispose` cut the transition short, also one that was still waiting for an older transition to unwind.
+  - A plain `OperationCanceledException` — the caller's token, or an enter or exit callback that cancelled itself.
+
+  Both new types derive from `OperationCanceledException`, so `catch (OperationCanceledException)` still catches every case. The cause is recorded when the transition is cancelled, before `Cancel` runs, and only when the cancellation caused the failure: a transition that failed on its own, or that its caller cancelled, and was superseded or disposed during its rollback keeps its own exception. A call still waiting for an older transition to unwind when `Dispose` runs throws `StateMachineDisposedException` before any guard or transition hook.
+- **`AsyncEnteredController`**: an `IEnteredController` base for a stage that waits for an event after its state is entered. Override `RunAsync(stateLifetime)` and `OnFailed(exception)`, and leave with the protected `ChangeStateAsync<T>()`. The state exiting, the next transition being superseded and the machine being disposed are silent; any other failure, including a next transition whose enter cancelled itself after this state had exited, goes to `OnFailed`. A transition failure that `RunAsync` catches itself is not reported.
+
+### Changed
+
+- A superseded transition's caller gets `TransitionSupersededException` and a disposed one's `StateMachineDisposedException` instead of a bare `OperationCanceledException`, and a superseded transition whose rollback threw no longer surfaces as an `AggregateException`. A check for the exact type `OperationCanceledException` (`ex.GetType() == typeof(OperationCanceledException)`, `Assert.ThrowsAsync<OperationCanceledException>`) no longer matches those two cases.
+
 ## [0.0.1-alpha.3] — 2026-10-13
 
 ### Changed

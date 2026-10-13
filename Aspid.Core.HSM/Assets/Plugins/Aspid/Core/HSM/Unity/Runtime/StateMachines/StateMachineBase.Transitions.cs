@@ -172,9 +172,19 @@ namespace Aspid.Core.HSM
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
         /// Or <see cref="StrictTransitions"/> is enabled and no registered transition covers the whole path.
         /// </exception>
+        /// <exception cref="TransitionSupersededException">
+        /// A newer async transition superseded this one. Failures of its rollback are in
+        /// <see cref="TransitionSupersededException.RollbackExceptions"/>.
+        /// </exception>
+        /// <exception cref="StateMachineDisposedException">
+        /// The machine was disposed before the transition completed, also while it waited for an older one to unwind.
+        /// </exception>
+        /// <exception cref="OperationCanceledException">
+        /// <paramref name="ct"/> was cancelled, or an enter or exit callback cancelled itself.
+        /// </exception>
         /// <exception cref="AggregateException">
-        /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
-        /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// The transition failed or was cancelled by its own token or callback, and then a rollback exit,
+        /// <see cref="OnChangedState"/> or an extension's detach threw too; the original exception comes first.
         /// Or several extensions threw while the transition detached them.
         /// </exception>
         public UniTask TransitionToAsync<TTarget>(CancellationToken ct = default)
@@ -196,7 +206,8 @@ namespace Aspid.Core.HSM
                 return;
 
             // Resolve the edge only after the superseded transition has unwound, as ChangeStateAsync does.
-            await SupersedeActiveTransitionAsync();
+            await SupersedeActiveTransitionAsync(targetType);
+            ThrowIfDisposedWhileWaiting(ct);
             var currentLeafType = _currentStates[^1].GetType();
 
             if (!IsTransitionEnabled(currentLeafType, targetType))
@@ -253,9 +264,19 @@ namespace Aspid.Core.HSM
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
         /// Or the transition type is not registered.
         /// </exception>
+        /// <exception cref="TransitionSupersededException">
+        /// A newer async transition superseded this one. Failures of its rollback are in
+        /// <see cref="TransitionSupersededException.RollbackExceptions"/>.
+        /// </exception>
+        /// <exception cref="StateMachineDisposedException">
+        /// The machine was disposed before the transition completed, also while it waited for an older one to unwind.
+        /// </exception>
+        /// <exception cref="OperationCanceledException">
+        /// <paramref name="ct"/> was cancelled, or an enter or exit callback cancelled itself.
+        /// </exception>
         /// <exception cref="AggregateException">
-        /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
-        /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// The transition failed or was cancelled by its own token or callback, and then a rollback exit,
+        /// <see cref="OnChangedState"/> or an extension's detach threw too; the original exception comes first.
         /// Or several extensions threw while the transition detached them.
         /// </exception>
         public UniTask TransitionViaAsync<TTransition>(CancellationToken ct = default)
@@ -278,7 +299,8 @@ namespace Aspid.Core.HSM
             if (!IsStateEnabled(transition.TargetState))
                 return;
 
-            await SupersedeActiveTransitionAsync();
+            await SupersedeActiveTransitionAsync(transition.TargetState);
+            ThrowIfDisposedWhileWaiting(ct);
             var currentLeafType = _currentStates[^1].GetType();
 
             // Checked after the supersede, like the edge guard: the source must be active in the chain that the

@@ -45,6 +45,23 @@ https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview/0.0.1-alpha.3
 
 Import it from the package's **Samples** tab. Its scripts read input through the [Input System](https://docs.unity3d.com/Packages/com.unity.inputsystem@latest), so install `com.unity.inputsystem` from the Unity Registry first, or the sample does not compile.
 
+## Why an async transition ended
+
+`ChangeStateAsync`, `TransitionToAsync` and `TransitionViaAsync` tell why they ended without completing. Every case is an
+`OperationCanceledException`, so an existing `catch (OperationCanceledException)` keeps catching all of them. The cause is
+recorded when the transition is cancelled, not guessed from the machine's state when the exception arrives.
+
+| Exception | Meaning | Usual handling |
+|---|---|---|
+| `TransitionSupersededException` | A newer transition took over; `SupersedingState` names its target, `RollbackExceptions` holds what the rollback threw | Nothing: the newer transition owns the machine |
+| `StateMachineDisposedException` | The machine was disposed | Nothing: the machine is gone |
+| `OperationCanceledException` (exactly) | The caller's token, or an enter/exit callback cancelled itself (a load gave up) | A failure: apply your error policy |
+| any other exception | An enter, exit or hook threw | A failure: apply your error policy |
+
+`AsyncEnteredController` packages this for a stage that waits for an event after its state is entered: it runs
+`RunAsync(stateLifetime)`, stays silent when the state exits, the next transition is superseded or the machine is
+disposed, and passes everything else to `OnFailed`.
+
 ## License
 
 [MIT](LICENSE).
