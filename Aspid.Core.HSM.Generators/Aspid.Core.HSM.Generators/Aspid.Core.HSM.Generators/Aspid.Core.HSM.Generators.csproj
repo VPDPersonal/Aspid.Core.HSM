@@ -20,6 +20,10 @@
         <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
         <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
         <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+        <!-- Fixed, so the DLL changes only with the generator sources. MSBuild reads environment variables as
+             properties, and the release job exports VERSION: without this the release build stamped the package
+             version into the DLL, and every version bump made the committed DLL stale. -->
+        <Version>1.0.0</Version>
     </PropertyGroup>
 
     <ItemGroup>
