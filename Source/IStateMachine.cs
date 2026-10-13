@@ -25,6 +25,18 @@ namespace Aspid.Core.HSM
         void ChangeState<T>() where T : IState;
 
         /// <summary>
+        /// Changes to the state <typeparamref name="T"/> like <see cref="ChangeState{T}"/>, awaiting the
+        /// <see cref="IAsyncExitController"/> and <see cref="IAsyncEnterController"/> callbacks on the way.
+        /// </summary>
+        /// <remarks>
+        /// A running async transition is cancelled first, and this one starts after its rollback. A cancelled or failed
+        /// transition rolls back to the ancestors the old and new chains share, and its exception goes to the caller.
+        /// </remarks>
+        /// <typeparam name="T">The target leaf state type.</typeparam>
+        /// <param name="cancellationToken">Cancels the transition, which then rolls back.</param>
+        UniTask ChangeStateAsync<T>(CancellationToken cancellationToken = default) where T : IState;
+
+        /// <summary>
         /// Transitions to <typeparamref name="TTarget"/>, executing any registered
         /// <see cref="ITransition"/> guards and hooks along the path.
         /// </summary>
