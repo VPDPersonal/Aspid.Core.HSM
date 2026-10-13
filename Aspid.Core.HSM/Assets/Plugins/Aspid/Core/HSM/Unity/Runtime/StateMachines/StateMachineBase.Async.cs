@@ -109,6 +109,11 @@ namespace Aspid.Core.HSM
                 // Signal last: a waiting superseder resumes inside this call and must find the machine idle.
                 unwound.TrySetResult();
             }
+
+            // Reached only when the core succeeded. IsTransitioning is false by now, unless a superseder that resumed
+            // above started a new transition: its own completion notifies, and states it exited are skipped.
+            if (_activeTransitionCts is null)
+                NotifyEntered();
         }
 
         private async UniTask ChangeStateCoreAsync(Type stateType, CancellationToken token)
@@ -119,6 +124,7 @@ namespace Aspid.Core.HSM
                 // with the factory or with another transition would be rewritten underneath this loop.
                 var newChain = RentTypeChainBuffer();
                 var divergeIndex = -1;
+                var awaitingEnteredStart = _awaitingEntered.Count;
                 try
                 {
                     _stateFactory.BuildTypeChain(stateType, newChain);
@@ -142,6 +148,8 @@ namespace Aspid.Core.HSM
                 }
                 catch (Exception exception)
                 {
+                    DropAwaitingEntered(awaitingEnteredStart);
+
                     // A chain that failed to build left the active chain as it was: nothing to roll back,
                     // but the change is still closed.
                     await RollBackAsync(divergeIndex >= 0 ? divergeIndex : _currentStates.Count, exception);
@@ -188,6 +196,7 @@ namespace Aspid.Core.HSM
             var isExited = false;
             try
             {
+                EndStateLifetime(state);
                 DetachExtensionsBoundTo(state);
 
                 isExiting = true;
@@ -278,6 +287,7 @@ namespace Aspid.Core.HSM
                 }
             }
             OnEnteredState(state);
+            AwaitEntered(state);
         }
     }
 }

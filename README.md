@@ -9,7 +9,7 @@
 > [!WARNING]
 > **Work in progress.** Aspid.Core.HSM is under active development. The public API is not yet stable and may change without notice between releases. Use with care in production.
 
-**Aspid.Core.HSM** is a Roslyn-powered Hierarchical State Machine for Unity, built from small composable abstractions: states with `Enter` / `Exit` hooks, a parent→child hierarchy expressed through the generic `IChildState<TParent>` interface, pluggable per-frame controllers (`IUpdateController`, `IFixedUpdateController`, `ILateUpdateController`, …) aggregated via `[ControllerGroup]`, declarative guarded transitions (`[Transition]`), extension states (`[ExtensionFor]`), state scopes and async enter/exit. `MonoStateMachine` wires it all to the Unity `MonoBehaviour` lifecycle.
+**Aspid.Core.HSM** is a Roslyn-powered Hierarchical State Machine for Unity, built from small composable abstractions: states with `Enter` / `Exit` hooks, a parent→child hierarchy expressed through the generic `IChildState<TParent>` interface, pluggable per-frame controllers (`IUpdateController`, `IFixedUpdateController`, `ILateUpdateController`, …) aggregated via `[ControllerGroup]`, declarative guarded transitions (`[Transition]`), extension states (`[ExtensionFor]`), state scopes and async enter/exit (`ChangeStateAsync`). `IEnteredController` runs once the transition that entered a state has completed, with a token that lives as long as the state. `MonoStateMachine` wires it all to the Unity `MonoBehaviour` lifecycle.
 
 ## Integration
 
@@ -36,7 +36,7 @@ https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview
 To pin a specific preview version, target the immutable per-release tag (see [Releases](https://github.com/VPDPersonal/Aspid.Core.HSM/releases) for the list of available versions):
 
 ```
-https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview/0.0.1-alpha.1
+https://github.com/VPDPersonal/Aspid.Core.HSM.git#upm-preview/0.0.1-alpha.2
 ```
 
 > **Note.** There is no stable release yet, so the `upm` branch does not exist. The [Release workflow](.github/workflows/release.yml) creates it — along with `upm/<version>` tags and a `#upm` install URL — when the first non-prerelease version ships.

@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`IEnteredController.OnEntered(CancellationToken stateLifetime)`**: runs once per entry into a state, after the transition that entered it has completed — the whole chain is entered and `IsTransitioning` is `false` — from root to leaf, after `ChangeState` and `ChangeStateAsync` alike. It does not run for a transition that throws, is cancelled or rolls back, nor for a state that the transition's queued follow-ups exited again. `stateLifetime` is cancelled when the state starts to exit, before its exit controllers, and on `Dispose`. A state change requested from `OnEntered` is a new transition. Stages that wait for an event (a finish, a player's choice) start the wait here instead of in `OnEnter`, where a follow-up change either threw or rolled back the transition still running. `[ControllerGroup]` dispatches it like any controller interface. An exception from `OnEntered` reaches the caller of the change after every state has been notified; the chain stays as entered.
+- The Game Loop sample enters `LoadingState` with `ChangeStateAsync` and leaves it from `OnEntered`.
 - `IStateMachine.ChangeStateAsync<T>(CancellationToken)`. Async state changes were reachable only through `StateMachineBase` and `MonoStateMachine`, so code holding the interface could use only `TransitionToAsync`. A custom `IStateMachine` implementation must add the method.
 
 ### Fixed
