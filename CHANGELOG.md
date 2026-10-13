@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A synchronous `ChangeState` into a state with an async-only enter or exit throws.** A `[ControllerGroup]` with one async enter controller implements only `IAsyncEnterController`, so `ChangeState` entered it without calling any of its enter controllers, and an async-only exit was skipped the same way. `ChangeState`, `TransitionTo` and `TransitionVia` now check the whole path first and throw `InvalidOperationException` naming the state and pointing to `ChangeStateAsync`; the chain is left unchanged. A state that implements both the sync and the async interface is entered as before.
+
 ### Added
 
 - `IStateMachine.ChangeStateAsync<T>(CancellationToken)`. Async state changes were reachable only through `StateMachineBase` and `MonoStateMachine`, so code holding the interface could use only `TransitionToAsync`. A custom `IStateMachine` implementation must add the method.
