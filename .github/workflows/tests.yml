@@ -42,6 +42,29 @@ jobs:
       - name: Run generator and runtime tests
         run: dotnet test Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators.Tests --nologo
 
+      # The same check the release runs, on every PR: a generator change must come with its DLL. The Release build
+      # re-deploys the DLL into the package checkout (Directory.Build.targets), so a clean diff proves it matches.
+      - name: Check the committed generator DLL
+        id: generator-dll
+        run: |
+          set -euo pipefail
+          dotnet build Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators/Aspid.Core.HSM.Generators -c Release --nologo
+          DLL=Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/Aspid.Core.HSM.Generators.dll
+          if ! git diff --exit-code --stat -- "$DLL"; then
+            echo "mismatch=true" >> "$GITHUB_OUTPUT"
+            echo "::error file=$DLL::The committed generator DLL does not match a Release build of the sources. Commit the DLL from the generator-dll artifact of this run."
+            exit 1
+          fi
+
+      # Built here with the SDK from global.json on LF sources, so it is the DLL the check expects: commit it as is.
+      - name: Upload the generator DLL the check expects
+        if: failure() && steps.generator-dll.outputs.mismatch == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: generator-dll
+          path: Aspid.Core.HSM/Assets/Plugins/Aspid/Core/HSM/Aspid.Core.HSM.Generators.dll
+          if-no-files-found: error
+
   # Unity compiles the package as C# 9 against .NET Standard 2.1; the tests use the latest C#.
   runtime-csharp9:
     name: Runtime as C# 9
