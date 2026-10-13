@@ -7,7 +7,7 @@ namespace Aspid.Core.HSM
 {
     public partial class MonoStateMachine
     {
-        /// <inheritdoc cref="StateMachineBase.ChangeStateAsync{TState}"/>
+        /// <inheritdoc />
         public UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState =>
             _stateMachine!.ChangeStateAsync<TState>(cancellationToken);

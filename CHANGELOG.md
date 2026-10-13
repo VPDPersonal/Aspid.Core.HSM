@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `IStateMachine.ChangeStateAsync<T>(CancellationToken)`. Async state changes were reachable only through `StateMachineBase` and `MonoStateMachine`, so code holding the interface could use only `TransitionToAsync`. A custom `IStateMachine` implementation must add the method.
+
 ## [0.0.1-alpha.2] — 2026-10-08
 
 ### Breaking
