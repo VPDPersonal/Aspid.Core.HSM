@@ -31,9 +31,15 @@ namespace Aspid.Core.HSM
         /// <remarks>
         /// A running async transition is cancelled first, and this one starts after its rollback. A cancelled or failed
         /// transition rolls back to the ancestors the old and new chains share, and its exception goes to the caller.
+        /// The exception tells why it ended, as recorded when it was cancelled.
         /// </remarks>
         /// <typeparam name="T">The target leaf state type.</typeparam>
         /// <param name="cancellationToken">Cancels the transition, which then rolls back.</param>
+        /// <exception cref="TransitionSupersededException">A newer async transition superseded this one.</exception>
+        /// <exception cref="StateMachineDisposedException">The machine was disposed before the transition completed.</exception>
+        /// <exception cref="OperationCanceledException">
+        /// <paramref name="cancellationToken"/> was cancelled, or an enter or exit callback cancelled itself.
+        /// </exception>
         UniTask ChangeStateAsync<T>(CancellationToken cancellationToken = default) where T : IState;
 
         /// <summary>

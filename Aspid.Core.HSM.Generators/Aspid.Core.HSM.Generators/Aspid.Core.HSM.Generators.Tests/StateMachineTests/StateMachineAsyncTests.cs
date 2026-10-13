@@ -63,7 +63,7 @@ public class StateMachineAsyncTests
 
         var secondTask = stateMachine.ChangeStateAsync<SimpleTestState>();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(async () => await firstTask);
+        await Assert.ThrowsAsync<TransitionSupersededException>(async () => await firstTask);
 
         await secondTask;
 

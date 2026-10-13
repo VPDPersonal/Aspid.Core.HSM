@@ -14,6 +14,10 @@ namespace Aspid.Core.HSM
         // synchronous segment also waits for the unwind. default(UniTask) is an already-completed task.
         private UniTask _activeTransitionUnwound;
 
+        // The in-flight core transition, set and cleared together with _activeTransitionCts. A superseder and Dispose
+        // record on it why they cancel before they call Cancel, so the caller's exception does not depend on timing.
+        private TransitionRun? _activeTransitionRun;
+
         /// <summary>
         /// Asynchronously transitions to <typeparamref name="TState"/>. Cancels any in-progress
         /// async transition and waits for it to unwind before mutating the state chain, so two
@@ -41,9 +45,19 @@ namespace Aspid.Core.HSM
         /// <exception cref="InvalidOperationException">
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
         /// </exception>
+        /// <exception cref="TransitionSupersededException">
+        /// A newer async transition superseded this one. Failures of its rollback are in
+        /// <see cref="TransitionSupersededException.RollbackExceptions"/>, not in an <see cref="AggregateException"/>.
+        /// </exception>
+        /// <exception cref="StateMachineDisposedException">
+        /// The machine was disposed before the transition completed, also while it waited for an older one to unwind.
+        /// </exception>
+        /// <exception cref="OperationCanceledException">
+        /// <paramref name="cancellationToken"/> was cancelled, or an enter or exit callback cancelled itself.
+        /// </exception>
         /// <exception cref="AggregateException">
-        /// The transition failed or was cancelled, and then a rollback exit, <see cref="OnChangedState"/> or an extension's
-        /// detach threw too; the original exception or <see cref="OperationCanceledException"/> comes first.
+        /// The transition failed or was cancelled by its own token or callback, and then a rollback exit,
+        /// <see cref="OnChangedState"/> or an extension's detach threw too; the original exception comes first.
         /// Or several extensions threw while the transition detached them.
         /// </exception>
         public UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
@@ -64,7 +78,7 @@ namespace Aspid.Core.HSM
             if (!IsStateEnabled(stateType))
                 return;
 
-            await SupersedeActiveTransitionAsync();
+            await SupersedeActiveTransitionAsync(stateType);
 
             // Read the leaf only after the superseded transition has unwound: the edge being guarded
             // is the one actually taken, not the one that was current when this call was made.
@@ -74,14 +88,15 @@ namespace Aspid.Core.HSM
             await RunTransitionCoreAsync(stateType, cancellationToken);
         }
 
-        private async UniTask SupersedeActiveTransitionAsync()
+        private async UniTask SupersedeActiveTransitionAsync(Type supersedingState)
         {
             // A loop, not a single check: several callers can wait for the same unwind. The first one to
             // resume starts a new transition, which the next one must supersede in turn.
             while (_activeTransitionCts is { } previous)
             {
-                // Read before Cancel: the core can unwind inside Cancel and reset the field.
+                // Read before Cancel: the core can unwind inside Cancel and reset the fields.
                 var unwound = _activeTransitionUnwound;
+                _activeTransitionRun?.MarkSuperseded(supersedingState);
                 previous.Cancel();
                 await unwound;
             }
@@ -92,23 +107,34 @@ namespace Aspid.Core.HSM
         {
             // Guards and transition hooks run between the caller's supersede and this point.
             // If one of them started a transition, supersede it too: two cores must never run at once.
-            await SupersedeActiveTransitionAsync();
+            await SupersedeActiveTransitionAsync(stateType);
+
+            // Disposed while this call waited for an older transition to unwind: it never starts.
+            if (_isDisposed)
+                throw new StateMachineDisposedException(null, cancellationToken);
 
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var run = new TransitionRun(linked.Token);
             var unwound = new UniTaskCompletionSource();
             _activeTransitionCts = linked;
+            _activeTransitionRun = run;
             _activeTransitionUnwound = unwound.Task;
             var succeeded = false;
             try
             {
-                await ChangeStateCoreAsync(stateType, linked.Token);
+                await ChangeStateCoreAsync(stateType, run);
                 succeeded = true;
+            }
+            catch (Exception exception) when (run.EndedBySupersedeOrDispose)
+            {
+                throw run.ToException(exception);
             }
             finally
             {
                 if (ReferenceEquals(_activeTransitionCts, linked))
                 {
                     _activeTransitionCts = null;
+                    _activeTransitionRun = null;
                     _activeTransitionUnwound = default;
                 }
 
@@ -127,8 +153,9 @@ namespace Aspid.Core.HSM
             }
         }
 
-        private async UniTask ChangeStateCoreAsync(Type stateType, CancellationToken token)
+        private async UniTask ChangeStateCoreAsync(Type stateType, TransitionRun run)
         {
+            var token = run.Token;
             OnChangingState();
             {
                 // Rented per in-flight transition: the chain is read across awaits, so a buffer shared
@@ -159,6 +186,9 @@ namespace Aspid.Core.HSM
                 }
                 catch (Exception exception)
                 {
+                    // Decided here, when the failure starts: a cancellation requested later, during the rollback,
+                    // did not cause it.
+                    run.FailedAfterCancellation = token.IsCancellationRequested;
                     DropAwaitingEntered(awaitingEnteredStart);
 
                     // A chain that failed to build left the active chain as it was: nothing to roll back,
@@ -173,6 +203,66 @@ namespace Aspid.Core.HSM
             }
             OnChangedState();
             AutoDetachIncompatibleExtensions();
+        }
+
+        // Why the running transition was cancelled. Whoever cancels it records the cause first; the first cause wins.
+        private sealed class TransitionRun
+        {
+            private enum EndCause
+            {
+                None,
+                Superseded,
+                Disposed,
+            }
+
+            private EndCause _cause;
+            private Type? _supersedingState;
+
+            public TransitionRun(CancellationToken token) => Token = token;
+
+            public CancellationToken Token { get; }
+
+            // Whether the core's failure began after its token was cancelled, i.e. the cancellation caused it.
+            public bool FailedAfterCancellation { get; set; }
+
+            public bool EndedBySupersedeOrDispose => _cause != EndCause.None && FailedAfterCancellation;
+
+            public void MarkSuperseded(Type supersedingState)
+            {
+                if (_cause != EndCause.None)
+                    return;
+
+                _cause = EndCause.Superseded;
+                _supersedingState = supersedingState;
+            }
+
+            public void MarkDisposed()
+            {
+                if (_cause == EndCause.None)
+                    _cause = EndCause.Disposed;
+            }
+
+            // The core rethrows its cancellation, or an AggregateException with the cancellation first and the
+            // failures of the rollback after it. Those failures go to RollbackExceptions instead of hiding the cause.
+            public OperationCanceledException ToException(Exception exception)
+            {
+                var cause = exception;
+                IReadOnlyList<Exception> rollbackExceptions = Array.Empty<Exception>();
+
+                if (exception is AggregateException { InnerExceptions: { Count: > 0 } inner })
+                {
+                    cause = inner[0];
+                    var rest = new Exception[inner.Count - 1];
+                    for (var i = 1; i < inner.Count; i++)
+                        rest[i - 1] = inner[i];
+
+                    rollbackExceptions = rest;
+                }
+
+                return _cause == EndCause.Disposed
+                    ? new StateMachineDisposedException(cause, Token)
+                    : new TransitionSupersededException(_supersedingState!, rollbackExceptions, cause, Token);
+            }
         }
 
         // Undoes a transition that was cancelled or threw: every state from divergeIndex down — old states not
