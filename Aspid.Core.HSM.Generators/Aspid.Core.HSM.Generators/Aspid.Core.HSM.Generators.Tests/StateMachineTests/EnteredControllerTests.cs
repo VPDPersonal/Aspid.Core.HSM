@@ -96,6 +96,17 @@ public sealed class EnDisposingRoot : EnteredLoggingState, IEnterController
 
 public sealed class EnUnderDisposingRoot : EnteredLoggingState, IChildState<EnDisposingRoot>;
 
+public sealed class OtherToDisposingRootTransition : ITransition<EnOtherRoot, EnDisposingRoot>
+{
+    public int BeforeCount { get; private set; }
+
+    public int AfterCount { get; private set; }
+
+    public void OnBeforeTransition() => BeforeCount++;
+
+    public void OnAfterTransition() => AfterCount++;
+}
+
 public sealed class EnThrowingLeaf : IState, IChildState<EnRoot>
 {
     public EnThrowingLeaf() => throw new InvalidOperationException("constructor failed");
@@ -305,6 +316,29 @@ public class EnteredControllerTests
         Assert.Same(_disposingRoot, Assert.Single(_sm.CurrentStates));
         Assert.DoesNotContain(_factory.CreatedWithScope, entry => entry.Type == typeof(EnUnderDisposingRoot));
         Assert.Equal(0, _disposingRoot.EnteredCalled);
+
+        // Closed like a change that threw: OnChangingState keeps its pair.
+        Assert.Equal(_sm.ChangingStateCallCount, _sm.ChangedStateCallCount);
+    }
+
+    // A change cut short by Dispose did not complete: its transition gets OnBeforeTransition but no OnAfterTransition.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_transition_cut_short_by_Dispose_gets_no_OnAfterTransition(bool via)
+    {
+        var transition = new OtherToDisposingRootTransition();
+        _sm.RegisterTransition(transition);
+        _sm.ChangeState<EnOtherRoot>();
+
+        if (via)
+            _sm.TransitionVia<OtherToDisposingRootTransition>();
+        else
+            _sm.TransitionTo<EnDisposingRoot>();
+
+        Assert.Equal(1, transition.BeforeCount);
+        Assert.Equal(0, transition.AfterCount);
+        Assert.Equal(_sm.ChangingStateCallCount, _sm.ChangedStateCallCount);
     }
 
     [Fact]

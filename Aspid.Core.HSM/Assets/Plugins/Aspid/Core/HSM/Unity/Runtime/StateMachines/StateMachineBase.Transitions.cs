@@ -76,8 +76,11 @@ namespace Aspid.Core.HSM
                     return;
 
                 transition.OnBeforeTransition();
-                ChangeStateCore(targetType);
-                transition.OnAfterTransition();
+
+                // A change cut short by Dispose did not complete, as one that threw: no OnAfterTransition.
+                if (ChangeStateCore(targetType))
+                    transition.OnAfterTransition();
+
                 return;
             }
 
@@ -101,7 +104,8 @@ namespace Aspid.Core.HSM
             foreach (var t in chain)
                 t.OnBeforeTransition();
 
-            ChangeStateCore(targetType);
+            if (!ChangeStateCore(targetType))
+                return;
 
             for (var i = chain.Count - 1; i >= 0; i--)
                 chain[i].OnAfterTransition();
@@ -151,8 +155,9 @@ namespace Aspid.Core.HSM
                 return;
 
             transition.OnBeforeTransition();
-            ChangeStateCore(transition.TargetState);
-            transition.OnAfterTransition();
+
+            if (ChangeStateCore(transition.TargetState))
+                transition.OnAfterTransition();
         }
         #endregion
 
