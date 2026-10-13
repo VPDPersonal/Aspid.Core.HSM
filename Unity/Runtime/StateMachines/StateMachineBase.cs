@@ -123,6 +123,10 @@ namespace Aspid.Core.HSM
                 _tickedExtensionIndex = -1;
             }
 
+            // A controller that disposed the machine after requesting a change: the request dies with it.
+            if (_isDisposed)
+                _pendingRequests.Clear();
+
             if (_pendingRequests.Count > 0)
             {
                 // An async transition started later in the same tick owns the chain now. Applying the
@@ -196,10 +200,15 @@ namespace Aspid.Core.HSM
                 var divergeIndex = FindDivergeIndex(newChain);
                 ThrowIfPathNeedsAsync(newChain, divergeIndex);
 
+                // A callback that disposes the machine stops the change after its own state: the next one would be
+                // created in a scope that Dispose has already destroyed.
                 for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
                 {
                     ExitState(_currentStates[i]);
                     _currentStates.RemoveAt(i);
+
+                    if (_isDisposed)
+                        return;
                 }
 
                 // Each state is created only once its parent has been entered, so it is resolved from
@@ -209,6 +218,9 @@ namespace Aspid.Core.HSM
                     var state = _stateFactory.CreateState(newChain[i]);
                     _currentStates.Add(state);
                     EnterState(state);
+
+                    if (_isDisposed)
+                        return;
                 }
             }
             catch (Exception cause)
@@ -365,7 +377,8 @@ namespace Aspid.Core.HSM
 
                 // Requests queued by Enter/Exit callbacks are drained here, in the order they were made.
                 // Guards are resolved at apply time, so each one sees the chain the previous one left behind.
-                while (_pendingRequests.Count > 0)
+                // A callback that disposed the machine drops what is still queued.
+                while (!_isDisposed && _pendingRequests.Count > 0)
                     Apply(_pendingRequests.Dequeue());
             }
             catch
@@ -526,7 +539,9 @@ namespace Aspid.Core.HSM
         // rest. Every state is notified before the first exception goes out.
         private void NotifyEntered()
         {
-            if (_awaitingEntered.Count == 0)
+            // A disposed machine notifies nobody; a state whose OnEntered disposes it stops the rest the same way,
+            // since Dispose takes every lifetime out.
+            if (_isDisposed || _awaitingEntered.Count == 0)
                 return;
 
             var awaiting = _awaitingEntered.ToArray();
