@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1-alpha.4] — 2026-10-13
+
 ### Added
 
 - **The exception of an async transition tells why it ended.** `ChangeStateAsync`, `TransitionToAsync` and `TransitionViaAsync` used to end with the same `OperationCanceledException` whether a newer transition superseded them, `Dispose` cut them short or their own enter cancelled itself, and a rollback failure turned any of them into an `AggregateException`. Callers guessed from `IsTransitioning`, which a fully synchronous superseder had already reset by the time the exception arrived. Now:
@@ -122,7 +124,8 @@ Three Roslyn incremental generators, each triggered via an attribute on a `parti
 - Dependency on [UniTask](https://github.com/Cysharp/UniTask) for the async enter/exit controllers.
 - **Game Loop** sample: a full state hierarchy with guarded transitions, async loading, extensions, scopes and extension points.
 
-[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.3...HEAD
+[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.4...HEAD
+[0.0.1-alpha.4]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.4
 [0.0.1-alpha.3]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.3
 [0.0.1-alpha.2]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.2
 [0.0.1-alpha.1]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.1
