@@ -52,6 +52,10 @@ namespace Aspid.Core.HSM
         /// <param name="targetType">The target leaf state type.</param>
         public void TransitionTo(Type targetType)
         {
+            // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
+            if (_isDisposed)
+                return;
+
             ThrowIfAsyncTransitionInProgress();
             Request(new PendingRequest(targetType, PendingKind.TransitionTo));
         }
@@ -121,6 +125,10 @@ namespace Aspid.Core.HSM
         /// <param name="transitionType">The registered transition type to execute.</param>
         public void TransitionVia(Type transitionType)
         {
+            // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
+            if (_isDisposed)
+                return;
+
             ThrowIfAsyncTransitionInProgress();
             Request(new PendingRequest(transitionType, PendingKind.TransitionVia));
         }
@@ -173,6 +181,10 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         public async UniTask TransitionToAsync(Type targetType, CancellationToken ct = default)
         {
+            // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
+            if (_isDisposed)
+                return;
+
             ThrowIfSyncChangeInProgress();
 
             if (!IsStateEnabled(targetType))
@@ -250,6 +262,10 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         public async UniTask TransitionViaAsync(Type transitionType, CancellationToken ct = default)
         {
+            // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
+            if (_isDisposed)
+                return;
+
             ThrowIfSyncChangeInProgress();
 
             var transition = FindTransitionByType(transitionType);
