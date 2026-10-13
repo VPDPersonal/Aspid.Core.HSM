@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1-alpha.3] — 2026-10-13
+
 ### Changed
 
 - **A synchronous `ChangeState` into a state with an async-only enter or exit throws.** A `[ControllerGroup]` with one async enter controller implements only `IAsyncEnterController`, so `ChangeState` entered it without calling any of its enter controllers, and an async-only exit was skipped the same way. `ChangeState`, `TransitionTo` and `TransitionVia` now check the whole path first and throw `InvalidOperationException` naming the state and pointing to `ChangeStateAsync`; the chain is left unchanged, and `TransitionTo` / `TransitionVia` throw before any transition hook runs. A state that implements both the sync and the async interface is entered as before.
@@ -106,6 +108,7 @@ Three Roslyn incremental generators, each triggered via an attribute on a `parti
 - Dependency on [UniTask](https://github.com/Cysharp/UniTask) for the async enter/exit controllers.
 - **Game Loop** sample: a full state hierarchy with guarded transitions, async loading, extensions, scopes and extension points.
 
-[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.2...HEAD
+[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.3...HEAD
+[0.0.1-alpha.3]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.3
 [0.0.1-alpha.2]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.2
 [0.0.1-alpha.1]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.1
