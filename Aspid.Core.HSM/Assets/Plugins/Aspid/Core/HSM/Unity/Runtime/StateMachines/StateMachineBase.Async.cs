@@ -79,6 +79,7 @@ namespace Aspid.Core.HSM
                 return;
 
             await SupersedeActiveTransitionAsync(stateType);
+            ThrowIfDisposedWhileWaiting(cancellationToken);
 
             // Read the leaf only after the superseded transition has unwound: the edge being guarded
             // is the one actually taken, not the one that was current when this call was made.
@@ -102,16 +103,21 @@ namespace Aspid.Core.HSM
             }
         }
 
+        // Disposed while the call waited for an older transition to unwind: it never starts, and no guard or transition
+        // hook runs on the disposed machine. A call made after Dispose is ignored at its entry instead.
+        private void ThrowIfDisposedWhileWaiting(CancellationToken cancellationToken)
+        {
+            if (_isDisposed)
+                throw new StateMachineDisposedException(null, cancellationToken);
+        }
+
         // Runs the core with no guard checks: every caller has checked the guards already.
         private async UniTask RunTransitionCoreAsync(Type stateType, CancellationToken cancellationToken)
         {
             // Guards and transition hooks run between the caller's supersede and this point.
             // If one of them started a transition, supersede it too: two cores must never run at once.
             await SupersedeActiveTransitionAsync(stateType);
-
-            // Disposed while this call waited for an older transition to unwind: it never starts.
-            if (_isDisposed)
-                throw new StateMachineDisposedException(null, cancellationToken);
+            ThrowIfDisposedWhileWaiting(cancellationToken);
 
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var run = new TransitionRun(linked.Token);
@@ -227,9 +233,11 @@ namespace Aspid.Core.HSM
 
             public bool EndedBySupersedeOrDispose => _cause != EndCause.None && FailedAfterCancellation;
 
+            // A transition already cancelled by its caller's token keeps that cause: it ends as the caller asked, even if
+            // a superseder or Dispose arrives while it is still unwinding.
             public void MarkSuperseded(Type supersedingState)
             {
-                if (_cause != EndCause.None)
+                if (_cause != EndCause.None || Token.IsCancellationRequested)
                     return;
 
                 _cause = EndCause.Superseded;
@@ -238,7 +246,7 @@ namespace Aspid.Core.HSM
 
             public void MarkDisposed()
             {
-                if (_cause == EndCause.None)
+                if (_cause == EndCause.None && !Token.IsCancellationRequested)
                     _cause = EndCause.Disposed;
             }
 

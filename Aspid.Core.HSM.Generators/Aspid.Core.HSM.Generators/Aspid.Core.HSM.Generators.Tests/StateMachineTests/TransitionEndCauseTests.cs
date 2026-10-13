@@ -39,7 +39,24 @@ public sealed class CauseFailingRollbackLeaf : CauseBlockingLeaf, IExitControlle
     public void OnExit() => throw new InvalidOperationException("rollback exit failed");
 }
 
-public sealed class RootToSyncLeafTransition : ITransition<CauseRoot, CauseSyncLeaf>;
+public sealed class RootToSyncLeafTransition : ITransition<CauseRoot, CauseSyncLeaf>
+{
+    public int BeforeCount { get; private set; }
+
+    public void OnBeforeTransition() => BeforeCount++;
+}
+
+/// <summary>Blocking enter, and an async exit that holds the rollback until <see cref="ReleaseExit"/>.</summary>
+public sealed class CauseSlowRollbackLeaf : BaseTestState, IChildState<CauseRoot>, IAsyncEnterController, IAsyncExitController
+{
+    private readonly UniTaskCompletionSource _exit = new();
+
+    public void ReleaseExit() => _exit.TrySetResult();
+
+    public UniTask OnEnterAsync(CancellationToken cancellationToken) => UniTask.Never(cancellationToken);
+
+    public UniTask OnExitAsync(CancellationToken cancellationToken) => _exit.Task;
+}
 
 #endregion
 
@@ -49,7 +66,8 @@ public sealed class RootToSyncLeafTransition : ITransition<CauseRoot, CauseSyncL
 public class TransitionEndCauseTests
 {
     private readonly TestStateFactory _factory = new();
-    private readonly TestableStateMachine _sm;
+    private readonly CauseSlowRollbackLeaf _slowRollback = new();
+    private readonly GuardedStateMachine _sm;
 
     public TransitionEndCauseTests()
     {
@@ -59,7 +77,8 @@ public class TransitionEndCauseTests
         _factory.RegisterState<CauseSyncLeaf>();
         _factory.RegisterState<CauseSelfCancellingLeaf>();
         _factory.RegisterState<CauseFailingRollbackLeaf>();
-        _sm = new TestableStateMachine(_factory);
+        _factory.RegisterState(() => _slowRollback);
+        _sm = new GuardedStateMachine(_factory);
         _sm.ChangeState<CauseRoot>();
     }
 
@@ -114,6 +133,58 @@ public class TransitionEndCauseTests
 
         await Assert.ThrowsAsync<TransitionSupersededException>(async () => await older);
         await Assert.ThrowsAsync<StateMachineDisposedException>(async () => await waiting);
+    }
+
+    // A call that waited for an older transition's rollback used to go on after Dispose: it ran the guards and, when a
+    // guard said no, completed as if nothing had happened.
+    [Fact]
+    public async Task A_call_waiting_for_a_rollback_is_cut_short_by_Dispose_before_any_guard()
+    {
+        var older = _sm.ChangeStateAsync<CauseSlowRollbackLeaf>();
+        var waiting = _sm.ChangeStateAsync<CauseSyncLeaf>();
+        _sm.EdgeGuard = (_, _) => false;
+        _sm.ObservedEdges.Clear();
+
+        _sm.Dispose();
+        _slowRollback.ReleaseExit();
+
+        await Assert.ThrowsAsync<TransitionSupersededException>(async () => await older);
+        await Assert.ThrowsAsync<StateMachineDisposedException>(async () => await waiting);
+        Assert.Empty(_sm.ObservedEdges);
+    }
+
+    [Fact]
+    public async Task A_TransitionToAsync_waiting_for_a_rollback_runs_no_hook_after_Dispose()
+    {
+        var transition = new RootToSyncLeafTransition();
+        _sm.RegisterTransition(transition);
+        var older = _sm.ChangeStateAsync<CauseSlowRollbackLeaf>();
+        var waiting = _sm.TransitionToAsync<CauseSyncLeaf>();
+
+        _sm.Dispose();
+        _slowRollback.ReleaseExit();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await older);
+        await Assert.ThrowsAsync<StateMachineDisposedException>(async () => await waiting);
+        Assert.Equal(0, transition.BeforeCount);
+    }
+
+    // The caller cancelled first; a superseder that arrives while the rollback still runs must not take over the cause.
+    [Fact]
+    public async Task The_callers_cancellation_wins_over_a_later_supersede()
+    {
+        using var cts = new CancellationTokenSource();
+        var first = _sm.ChangeStateAsync<CauseSlowRollbackLeaf>(cts.Token);
+        cts.Cancel();
+
+        var second = _sm.ChangeStateAsync<CauseSyncLeaf>();
+        _slowRollback.ReleaseExit();
+
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await first);
+        await second;
+
+        Assert.IsType<OperationCanceledException>(exception);
+        Assert.IsType<CauseSyncLeaf>(_sm.CurrentStates[^1]);
     }
 
     [Fact]

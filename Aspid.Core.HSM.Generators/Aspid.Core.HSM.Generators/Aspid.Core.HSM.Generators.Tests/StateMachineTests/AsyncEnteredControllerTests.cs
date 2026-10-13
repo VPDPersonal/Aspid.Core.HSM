@@ -43,6 +43,9 @@ public sealed class FinishStage(IStateMachine stateMachine) : AsyncEnteredContro
 
     public bool Finished { get; private set; }
 
+    /// <summary>When set, RunAsync goes on waiting for the state's lifetime after Next, as a stage that handled it would.</summary>
+    public bool WaitAfterNext { get; set; }
+
     public void Signal() => _signal.TrySetResult();
 
     public UniTask Go<TState>() where TState : IState => ChangeStateAsync<TState>();
@@ -55,6 +58,9 @@ public sealed class FinishStage(IStateMachine stateMachine) : AsyncEnteredContro
         await _signal.Task.AttachExternalCancellation(stateLifetime);
         await Next!(this);
         Finished = true;
+
+        if (WaitAfterNext)
+            await UniTask.Never(stateLifetime);
     }
 
     protected override void OnFailed(Exception exception) => Failures.Add(exception);
@@ -144,6 +150,25 @@ public class AsyncEnteredControllerTests
 
         await _sm.ChangeStateAsync<StageElsewhere>();
 
+        Assert.Empty(_stage.Failures);
+    }
+
+    // A transition failure the stage caught used to stay recorded, and the state's later exit reported it to OnFailed.
+    [Fact]
+    public async Task A_transition_failure_the_stage_handled_is_not_reported_later()
+    {
+        _stage.WaitAfterNext = true;
+        _stage.Next = async stage =>
+        {
+            try { await stage.Go<StageSelfCancellingNext>(); }
+            catch (OperationCanceledException) { }
+        };
+        await _sm.ChangeStateAsync<StageState>();
+
+        _stage.Signal();
+        await _sm.ChangeStateAsync<StageElsewhere>();
+
+        Assert.True(_stage.Finished);
         Assert.Empty(_stage.Failures);
     }
 

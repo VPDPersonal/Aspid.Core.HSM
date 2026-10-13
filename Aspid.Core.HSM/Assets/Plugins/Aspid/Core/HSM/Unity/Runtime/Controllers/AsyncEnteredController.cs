@@ -63,6 +63,8 @@ namespace Aspid.Core.HSM
         protected async UniTask ChangeStateAsync<TState>(CancellationToken cancellationToken = default)
             where TState : IState
         {
+            // Per attempt: a failure the stage caught and handled must not be reported later.
+            _transitionFailure = null;
             try
             {
                 await _stateMachine.ChangeStateAsync<TState>(cancellationToken);
@@ -74,6 +76,12 @@ namespace Aspid.Core.HSM
             }
         }
 
+        // The stage's own wait was cancelled by stateLifetime: its token says so. Without that token, it is the stage's
+        // cancellation only when no transition it started has failed since the last attempt.
+        private bool IsStageCancellation(OperationCanceledException exception, CancellationToken stateLifetime) =>
+            stateLifetime.IsCancellationRequested &&
+            (exception.CancellationToken == stateLifetime || _transitionFailure is null);
+
         private async UniTaskVoid RunGuardedAsync(CancellationToken stateLifetime)
         {
             _transitionFailure = null;
@@ -83,13 +91,14 @@ namespace Aspid.Core.HSM
             }
             catch (TransitionSupersededException) { }
             catch (StateMachineDisposedException) { }
-            catch (OperationCanceledException) when (stateLifetime.IsCancellationRequested && _transitionFailure is null)
+            catch (OperationCanceledException exception) when (IsStageCancellation(exception, stateLifetime))
             {
                 // The state exited or the machine was disposed while the stage waited.
             }
             catch (Exception exception)
             {
-                OnFailed(_transitionFailure ?? exception);
+                // A plain cancellation is recreated at every await: the one that escaped stands for the transition failure.
+                OnFailed(exception is OperationCanceledException && _transitionFailure is not null ? _transitionFailure : exception);
             }
         }
     }

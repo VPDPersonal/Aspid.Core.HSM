@@ -599,7 +599,7 @@ namespace Aspid.Core.HSM
         /// </summary>
         /// <remarks>
         /// States are not exited, and neither is a cancelled transition rolled back: its states, the half-entered one
-        /// included, are disposed with the rest, and its caller gets <see cref="OperationCanceledException"/>.
+        /// included, are disposed with the rest, and its caller gets <see cref="StateMachineDisposedException"/>.
         /// From the moment it starts, state changes are ignored, also those requested by a callback it triggers.
         /// A second call does nothing.
         /// </remarks>
