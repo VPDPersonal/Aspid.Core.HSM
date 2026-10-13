@@ -138,7 +138,11 @@ namespace Aspid.Core.HSM
         /// midway: exited states stay exited, and the chain ends at the last state reached, or at
         /// <see cref="EmptyState"/> when none is left. <see cref="OnChangedState"/> still runs, then the exception propagates.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">An async transition is already in progress.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// An async transition is already in progress. Or a state on the path implements <see cref="IAsyncEnterController"/>
+        /// without <see cref="IEnterController"/>, or <see cref="IAsyncExitController"/> without <see cref="IExitController"/>;
+        /// the chain is then left unchanged.
+        /// </exception>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
         /// Or several extensions threw while the change detached them.
@@ -177,6 +181,7 @@ namespace Aspid.Core.HSM
             {
                 _stateFactory.BuildTypeChain(stateType, newChain);
                 var divergeIndex = FindDivergeIndex(newChain);
+                ThrowIfPathNeedsAsync(newChain, divergeIndex);
 
                 for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
                 {
@@ -206,6 +211,30 @@ namespace Aspid.Core.HSM
             OnChangedState();
             AutoDetachIncompatibleExtensions();
         }
+
+        // A synchronous change runs only IEnterController and IExitController. A state whose enter or exit is
+        // async only — a [ControllerGroup] with one async controller implements only the async interface — would be
+        // passed through without its controllers, so the whole path is checked before anything changes.
+        private void ThrowIfPathNeedsAsync(List<Type> newChain, int divergeIndex)
+        {
+            for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+            {
+                var state = _currentStates[i];
+                if (state is IAsyncExitController && state is not IExitController)
+                    throw AsyncOnlyState(state.GetType(), nameof(IAsyncExitController));
+            }
+
+            for (var i = divergeIndex; i < newChain.Count; i++)
+            {
+                var type = newChain[i];
+                if (typeof(IAsyncEnterController).IsAssignableFrom(type) && !typeof(IEnterController).IsAssignableFrom(type))
+                    throw AsyncOnlyState(type, nameof(IAsyncEnterController));
+            }
+        }
+
+        private static InvalidOperationException AsyncOnlyState(Type stateType, string asyncController) =>
+            new($"'{stateType.Name}' implements {asyncController} without its synchronous counterpart, so a synchronous " +
+                $"state change would skip its controllers. Use ChangeStateAsync, TransitionToAsync or TransitionViaAsync.");
 
         // A change that throws midway keeps the states it reached: exited states cannot be entered back.
         // Close it anyway, so OnChangingState/OnChangedState stay paired and extensions are checked against
