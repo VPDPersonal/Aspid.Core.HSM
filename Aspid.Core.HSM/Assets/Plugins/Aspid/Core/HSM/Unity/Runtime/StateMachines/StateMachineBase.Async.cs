@@ -163,6 +163,10 @@ namespace Aspid.Core.HSM
         // exit throws is still removed and released. The change is then closed the same way as a failed sync one.
         private async UniTask RollBackAsync(int divergeIndex, Exception cause)
         {
+            // Dispose does not exit states; the ones this transition reached are disposed with the rest.
+            if (_isDisposed)
+                return;
+
             List<Exception>? failures = null;
 
             for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
