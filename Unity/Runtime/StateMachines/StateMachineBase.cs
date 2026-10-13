@@ -30,6 +30,7 @@ namespace Aspid.Core.HSM
         private int _tickedExtensionIndex = -1;
 
         private CancellationTokenSource? _activeTransitionCts;
+        private bool _isDisposed;
 
         /// <inheritdoc />
         public IReadOnlyList<IState> CurrentStates => _currentStates;
@@ -436,13 +437,25 @@ namespace Aspid.Core.HSM
 
         #region Dispose
         /// <summary>
-        /// Detaches all extensions, disposes all active states via <see cref="IDisposableController"/>,
-        /// and disposes all active and cached state scopes.
+        /// Cancels a running async transition, detaches all extensions, disposes all active states via
+        /// <see cref="IDisposableController"/>, and disposes all active and cached state scopes.
         /// </summary>
+        /// <remarks>
+        /// States are not exited, and neither is a cancelled transition rolled back: its states, the half-entered one
+        /// included, are disposed with the rest, and its caller gets <see cref="OperationCanceledException"/>.
+        /// A second call does nothing.
+        /// </remarks>
         public void Dispose()
         {
+            if (_isDisposed)
+                return;
+
+            _isDisposed = true;
             Disposing();
             {
+                // Before the states are disposed: the cancelled core unwinds here when its callback ends synchronously.
+                _activeTransitionCts?.Cancel();
+
                 for (int i = _activeExtensions.Count - 1; i >= 0; i--)
                     DetachExtensionAt(i);
 
