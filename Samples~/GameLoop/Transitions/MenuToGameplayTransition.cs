@@ -4,8 +4,9 @@ using UnityEngine;
 
 namespace Aspid.Core.HSM.Samples.GameLoop.Transitions
 {
-    [Transition(typeof(MainMenuState), typeof(SinglePlayerState))]
-    public class MenuToGameplayTransition : ITransition<MainMenuState, SinglePlayerState>
+    // The menu reaches gameplay through LoadingState, so the guarded edge leaves the loading screen.
+    [Transition(typeof(LoadingState), typeof(SinglePlayerState))]
+    public class MenuToGameplayTransition : ITransition<LoadingState, SinglePlayerState>
     {
         private bool _profileLoaded = true;
 

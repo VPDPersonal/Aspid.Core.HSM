@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Runtime.ExceptionServices;
 #if ENABLE_PROFILER
 using System.Text;
 using Unity.Profiling;
@@ -31,6 +32,11 @@ namespace Aspid.Core.HSM
 
         private CancellationTokenSource? _activeTransitionCts;
         private bool _isDisposed;
+
+        // IEnteredController states entered by the running operation, in enter order, each with the lifetime it was
+        // entered with. A state exited since then has had that lifetime cancelled, so it is skipped when notified.
+        private readonly List<(IState State, IEnteredController Controller, CancellationTokenSource Lifetime)> _awaitingEntered = new();
+        private readonly Dictionary<IState, CancellationTokenSource> _stateLifetimes = new();
 
         /// <inheritdoc />
         public IReadOnlyList<IState> CurrentStates => _currentStates;
@@ -178,6 +184,7 @@ namespace Aspid.Core.HSM
             // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
             // which are free to re-enter the factory. A shared buffer would be rewritten underneath us.
             var newChain = RentTypeChainBuffer();
+            var awaitingEnteredStart = _awaitingEntered.Count;
             try
             {
                 _stateFactory.BuildTypeChain(stateType, newChain);
@@ -201,6 +208,7 @@ namespace Aspid.Core.HSM
             }
             catch (Exception cause)
             {
+                DropAwaitingEntered(awaitingEnteredStart);
                 CloseFailedChange(cause);
                 throw;
             }
@@ -345,6 +353,9 @@ namespace Aspid.Core.HSM
                 // A throwing state must not leak its queued follow-ups into an unrelated later transition.
                 _pendingRequests.Clear();
             }
+
+            // After the queue is drained and the flag is down: a change requested from OnEntered runs at once.
+            NotifyEntered();
         }
 
         private void Apply(PendingRequest request)
@@ -378,6 +389,8 @@ namespace Aspid.Core.HSM
         #region Exit
         private void ExitState(IState state)
         {
+            EndStateLifetime(state);
+
             // Extensions bound to this state live in a child of its scope, which Release is about to dispose.
             DetachExtensionsBoundTo(state);
 
@@ -420,6 +433,7 @@ namespace Aspid.Core.HSM
                 state.GetController<IEnterController>()?.OnEnter();
             }
             OnEnteredState(state);
+            AwaitEntered(state);
         }
 
         /// <summary>
@@ -433,6 +447,80 @@ namespace Aspid.Core.HSM
         /// </summary>
         /// <param name="state">The state that was entered.</param>
         protected virtual void OnEnteredState(IState state) { }
+        #endregion
+
+        #region Entered
+        // Gives a state that has an IEnteredController its lifetime and queues its OnEntered for the end of the operation.
+        private void AwaitEntered(IState state)
+        {
+            if (state.GetController<IEnteredController>() is not { } controller)
+                return;
+
+            var lifetime = new CancellationTokenSource();
+            _stateLifetimes[state] = lifetime;
+            _awaitingEntered.Add((state, controller, lifetime));
+        }
+
+        // A change that failed does not notify the states it entered: they keep their lifetime, not their OnEntered.
+        private void DropAwaitingEntered(int start) =>
+            _awaitingEntered.RemoveRange(start, _awaitingEntered.Count - start);
+
+        private void EndStateLifetime(IState state)
+        {
+            if (!_stateLifetimes.TryGetValue(state, out var lifetime))
+                return;
+
+            _stateLifetimes.Remove(state);
+            lifetime.Cancel();
+            lifetime.Dispose();
+        }
+
+        // Called once an operation has completed and no transition is running. Takes the whole list first: an
+        // OnEntered that changes state notifies its own entries in that nested call, while this one goes on with the
+        // rest. Every state is notified before the first exception goes out.
+        private void NotifyEntered()
+        {
+            if (_awaitingEntered.Count == 0)
+                return;
+
+            var awaiting = _awaitingEntered.ToArray();
+            _awaitingEntered.Clear();
+
+            List<Exception>? failures = null;
+            foreach (var (state, controller, lifetime) in awaiting)
+            {
+                // Exited since: its lifetime was cancelled and removed, or replaced if the state was entered again.
+                if (!_stateLifetimes.TryGetValue(state, out var current) || current != lifetime)
+                    continue;
+
+                try
+                {
+                    controller.OnEntered(lifetime.Token);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= new List<Exception>()).Add(exception);
+                }
+            }
+
+            if (failures is { Count: 1 })
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+
+            if (failures is not null)
+                throw new AggregateException("Several OnEntered callbacks threw.", failures);
+        }
+
+        private void EndAllStateLifetimes()
+        {
+            foreach (var lifetime in _stateLifetimes.Values)
+            {
+                lifetime.Cancel();
+                lifetime.Dispose();
+            }
+
+            _stateLifetimes.Clear();
+            _awaitingEntered.Clear();
+        }
         #endregion
 
         #region Dispose
@@ -455,6 +543,7 @@ namespace Aspid.Core.HSM
             {
                 // Before the states are disposed: the cancelled core unwinds here when its callback ends synchronously.
                 _activeTransitionCts?.Cancel();
+                EndAllStateLifetimes();
 
                 for (int i = _activeExtensions.Count - 1; i >= 0; i--)
                     DetachExtensionAt(i);

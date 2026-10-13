@@ -2,6 +2,7 @@ using Aspid.Core.HSM;
 using Aspid.Core.HSM.Samples.GameLoop.Extensions;
 using Aspid.Core.HSM.Samples.GameLoop.States;
 using Aspid.Core.HSM.Samples.GameLoop.Transitions;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -14,7 +15,7 @@ namespace Aspid.Core.HSM.Samples.GameLoop
 
         private void Awake()
         {
-            var factory = new SampleStateFactory();
+            var factory = new SampleStateFactory(this);
             Initialize(factory);
 
             RegisterTransition(new MenuToGameplayTransition());
@@ -58,8 +59,8 @@ namespace Aspid.Core.HSM.Samples.GameLoop
         {
             if (keyboard.enterKey.wasPressedThisFrame)
             {
-                Debug.Log("[Sample] Starting game...");
-                TransitionTo<SinglePlayerState>();
+                Debug.Log("[Sample] Loading...");
+                ChangeStateAsync<LoadingState>(destroyCancellationToken).Forget();
             }
         }
 
