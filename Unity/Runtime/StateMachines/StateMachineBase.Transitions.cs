@@ -196,7 +196,7 @@ namespace Aspid.Core.HSM
                 return;
 
             // Resolve the edge only after the superseded transition has unwound, as ChangeStateAsync does.
-            await SupersedeActiveTransitionAsync();
+            await SupersedeActiveTransitionAsync(targetType);
             var currentLeafType = _currentStates[^1].GetType();
 
             if (!IsTransitionEnabled(currentLeafType, targetType))
@@ -278,7 +278,7 @@ namespace Aspid.Core.HSM
             if (!IsStateEnabled(transition.TargetState))
                 return;
 
-            await SupersedeActiveTransitionAsync();
+            await SupersedeActiveTransitionAsync(transition.TargetState);
             var currentLeafType = _currentStates[^1].GetType();
 
             // Checked after the supersede, like the edge guard: the source must be active in the chain that the

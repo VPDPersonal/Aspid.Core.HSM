@@ -612,6 +612,8 @@ namespace Aspid.Core.HSM
             Disposing();
             {
                 // Before the states are disposed: the cancelled core unwinds here when its callback ends synchronously.
+                // The cause is recorded first, so its caller gets StateMachineDisposedException whatever the timing.
+                _activeTransitionRun?.MarkDisposed();
                 _activeTransitionCts?.Cancel();
                 EndAllStateLifetimes();
 
