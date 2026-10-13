@@ -187,7 +187,8 @@ namespace Aspid.Core.HSM
         }
 
         // Diffs and swaps the chain with no guard checks: every caller has checked the guards already.
-        private void ChangeStateCore(Type stateType)
+        // Returns false when a callback disposed the machine midway: the change was cut short, not completed.
+        private bool ChangeStateCore(Type stateType)
         {
             OnChangingState();
             // Rented per in-flight transition: the chain must stay valid across Enter/Exit callbacks,
@@ -202,25 +203,19 @@ namespace Aspid.Core.HSM
 
                 // A callback that disposes the machine stops the change after its own state: the next one would be
                 // created in a scope that Dispose has already destroyed.
-                for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+                for (var i = _currentStates.Count - 1; i >= divergeIndex && !_isDisposed; i--)
                 {
                     ExitState(_currentStates[i]);
                     _currentStates.RemoveAt(i);
-
-                    if (_isDisposed)
-                        return;
                 }
 
                 // Each state is created only once its parent has been entered, so it is resolved from
                 // its own scope, a child of the parent's.
-                for (var i = divergeIndex; i < newChain.Count; i++)
+                for (var i = divergeIndex; i < newChain.Count && !_isDisposed; i++)
                 {
                     var state = _stateFactory.CreateState(newChain[i]);
                     _currentStates.Add(state);
                     EnterState(state);
-
-                    if (_isDisposed)
-                        return;
                 }
             }
             catch (Exception cause)
@@ -234,8 +229,20 @@ namespace Aspid.Core.HSM
                 ReturnTypeChainBuffer(newChain);
             }
 
+            if (_isDisposed)
+            {
+                // Closed like a change that threw: OnChangingState keeps its pair, the chain keeps a leaf. Dispose has
+                // detached every extension already, so there is nothing to check against the leaf.
+                if (_currentStates.Count == 0)
+                    _currentStates.Add(new EmptyState());
+
+                OnChangedState();
+                return false;
+            }
+
             OnChangedState();
             AutoDetachIncompatibleExtensions();
+            return true;
         }
 
         // A synchronous change runs only IEnterController and IExitController. A state whose enter or exit is
@@ -324,7 +331,7 @@ namespace Aspid.Core.HSM
         protected virtual void OnChangingState() { }
 
         /// <summary>
-        /// Called after the exit/enter sequence ends, also when a state in it throws.
+        /// Called after the exit/enter sequence ends, also when a state in it throws or a callback disposes the machine.
         /// </summary>
         protected virtual void OnChangedState() { }
         #endregion
@@ -494,7 +501,8 @@ namespace Aspid.Core.HSM
         // Gives a state that has an IEnteredController its lifetime and queues its OnEntered for the end of the operation.
         private void AwaitEntered(IState state)
         {
-            if (state.GetController<IEnteredController>() is not { } controller)
+            // Entered after a callback disposed the machine: no lifetime, since nothing would cancel or release it.
+            if (_isDisposed || state.GetController<IEnteredController>() is not { } controller)
                 return;
 
             var lifetime = new CancellationTokenSource();
