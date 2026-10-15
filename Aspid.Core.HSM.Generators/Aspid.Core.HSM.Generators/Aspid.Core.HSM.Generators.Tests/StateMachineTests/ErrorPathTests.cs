@@ -108,6 +108,13 @@ public sealed class EpThrowingCallbackLeaf : BaseTestState, IAsyncEnterControlle
     }
 }
 
+public sealed class EpChildToOtherTransition : ITransition<EpChild, EpOther>
+{
+    public int AfterCount { get; private set; }
+
+    public void OnAfterTransition() => AfterCount++;
+}
+
 public sealed class EpSelfParent : BaseTestState, IChildState<EpSelfParent>;
 
 public sealed class EpCycleA : BaseTestState, IChildState<EpCycleB>;
@@ -361,9 +368,9 @@ public class ErrorPathTests
         _sm.ChangeState<EpChild>();
         child.OnExitAction = () => _sm.Dispose();
 
-        // The whole call ends synchronously, and UniTask reports any OperationCanceledException it ends with as a plain
-        // one, so the end cause is not checked here.
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await _sm.ChangeStateAsync<EpOther>());
+        // The whole call ends synchronously: an async method that does so used to report the cause as a plain
+        // OperationCanceledException.
+        await Assert.ThrowsAsync<StateMachineDisposedException>(async () => await _sm.ChangeStateAsync<EpOther>());
 
         Assert.Equal(1, child.ExitCalled);
         Assert.Equal(0, root.OnExitCalled);
@@ -380,7 +387,7 @@ public class ErrorPathTests
         var changedBefore = _sm.ChangedStateCallCount;
 
         // Ends synchronously, as above.
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await _sm.ChangeStateAsync<EpRoot>());
+        await Assert.ThrowsAsync<StateMachineDisposedException>(async () => await _sm.ChangeStateAsync<EpRoot>());
 
         Assert.Equal(changedBefore, _sm.ChangedStateCallCount);
     }
@@ -402,6 +409,59 @@ public class ErrorPathTests
         Assert.Equal(1, child.ExitCalled);
         Assert.Equal(0, root.ExitCalled);
         Assert.Equal(0, _sm.ChangedStateCallCount);
+    }
+    #endregion
+
+    #region Synchronous end cause
+    [Fact]
+    public async Task TransitionToAsync_whose_sync_exit_disposes_the_machine_reports_the_dispose()
+    {
+        Register(new EpRoot());
+        var child = Register(new EpChild());
+        Register(new EpOther());
+        var transition = new EpChildToOtherTransition();
+        _sm.RegisterTransition(transition);
+        _sm.ChangeState<EpChild>();
+        child.OnExitAction = () => _sm.Dispose();
+
+        await Assert.ThrowsAsync<StateMachineDisposedException>(async () => await _sm.TransitionToAsync<EpOther>());
+
+        Assert.Equal(0, transition.AfterCount);
+    }
+
+    [Fact]
+    public async Task TransitionViaAsync_whose_sync_exit_disposes_the_machine_reports_the_dispose()
+    {
+        Register(new EpRoot());
+        var child = Register(new EpChild());
+        Register(new EpOther());
+        var transition = new EpChildToOtherTransition();
+        _sm.RegisterTransition(transition);
+        _sm.ChangeState<EpChild>();
+        child.OnExitAction = () => _sm.Dispose();
+
+        await Assert.ThrowsAsync<StateMachineDisposedException>(
+            async () => await _sm.TransitionViaAsync<EpChildToOtherTransition>());
+
+        Assert.Equal(0, transition.AfterCount);
+    }
+
+    [Fact]
+    public async Task Sync_exit_that_supersedes_the_transition_reports_the_supersede()
+    {
+        Register(new EpRoot());
+        var child = Register(new EpChild());
+        Register(new EpOther());
+        _sm.ChangeState<EpChild>();
+        var superseding = UniTask.CompletedTask;
+        child.OnExitAction = () => superseding = _sm.ChangeStateAsync<EpRoot>();
+
+        var exception = await Assert.ThrowsAsync<TransitionSupersededException>(
+            async () => await _sm.ChangeStateAsync<EpOther>());
+
+        await superseding;
+        Assert.Equal(typeof(EpRoot), exception.SupersedingState);
+        Assert.IsType<EpRoot>(Assert.Single(_sm.CurrentStates));
     }
     #endregion
 
