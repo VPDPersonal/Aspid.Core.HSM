@@ -170,6 +170,8 @@ namespace Aspid.Core.HSM
         /// An async transition is already in progress. Or a state on the path implements <see cref="IAsyncEnterController"/>
         /// without <see cref="IEnterController"/>, or <see cref="IAsyncExitController"/> without <see cref="IExitController"/>;
         /// the chain is then left unchanged.
+        /// Or an <see cref="IEntrySelector"/> returns <see langword="null"/>, a state that is not its direct child, or an
+        /// async-only one; that is known only once the selector has been entered, so the chain then ends at the selector.
         /// </exception>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
@@ -239,6 +241,18 @@ namespace Aspid.Core.HSM
                     _currentStates.Add(state);
                     EnterState(state);
                 }
+
+                // A composite target picks its entry child once it has been entered, in this same change.
+                while (!_isDisposed && _currentStates[^1] is IEntrySelector selector)
+                {
+                    var entryType = SelectEntryType(selector);
+                    if (typeof(IAsyncEnterController).IsAssignableFrom(entryType) && !typeof(IEnterController).IsAssignableFrom(entryType))
+                        throw AsyncOnlyState(entryType, nameof(IAsyncEnterController));
+
+                    var state = _stateFactory.CreateState(entryType);
+                    _currentStates.Add(state);
+                    EnterState(state);
+                }
             }
             catch (Exception cause)
             {
@@ -265,6 +279,30 @@ namespace Aspid.Core.HSM
             OnChangedState();
             AutoDetachIncompatibleExtensions();
             return true;
+        }
+
+        // The child an entered IEntrySelector picks. It must be a direct child of the selector, which also rules out a
+        // type already in the chain; the check names both types, since the mistake sits in one of them.
+        private Type SelectEntryType(IEntrySelector selector)
+        {
+            var selectorType = selector.GetType();
+            var entryType = selector.SelectEntry()
+                ?? throw new InvalidOperationException(
+                    $"'{selectorType.Name}'.{nameof(IEntrySelector.SelectEntry)} returned null instead of a child state type.");
+
+            if (StateHierarchy.GetParentType(entryType) != selectorType)
+                throw new InvalidOperationException(
+                    $"'{selectorType.Name}' selected '{entryType.Name}' as its entry, which is not its direct child: " +
+                    $"'{entryType.Name}' must implement {nameof(IChildState)}<{selectorType.Name}>.");
+
+            foreach (var state in _currentStates)
+            {
+                if (state.GetType() == entryType)
+                    throw new InvalidOperationException(
+                        $"'{selectorType.Name}' selected '{entryType.Name}' as its entry, which is already in the active chain.");
+            }
+
+            return entryType;
         }
 
         // A synchronous change runs only IEnterController and IExitController. A state whose enter or exit is

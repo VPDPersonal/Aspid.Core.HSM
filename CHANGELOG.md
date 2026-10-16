@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`MonoStateMachine.Update`, `LateUpdate` and `FixedUpdate` are `protected virtual`.** They were `private`, so a subclass that declared its own `Update` silently replaced the machine's, and the states stopped ticking. Override them and call the base method. A subclass that declares `Update`, `LateUpdate`, `FixedUpdate` or `OnDestroy` without `override` now gets warning CS0114 and still hides the base method: make it `protected override` and call `base`. The `Game Loop` sample no longer calls `Dispose` from its own `OnDestroy`.
 - `MonoStateMachine.IsInitialized` is `false` again after `Dispose`, and `Initialize` then creates a new machine. Calls made between the two are ignored, as before.
+- The `InvalidOperationException` for a cycle in the declared parents names the whole cycle (`A -> B -> A`) instead of the type where it closes, and `StateFactory.BuildTypeChain` leaves its destination list empty.
 - `ChangeState(Type)`, `TransitionTo(Type)`, `TransitionVia(Type)` and their async overloads throw `ArgumentNullException` for `null` and `ArgumentException` for a type that is not an `IState` (an `ITransition` for the `Via` methods), before anything runs. `TransitionVia` with such a type used to throw `InvalidOperationException` ("not registered"). See the matching entry under Fixed.
 
 ### Fixed
@@ -26,8 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Dispose` threw `ArgumentOutOfRangeException` while the last state's async exit was waiting.** The cancelled exit removed the state and left the chain empty, and detaching the extensions read the leaf. The chain falls back to `EmptyState`, and an extension detached at that moment gets `EmptyState` as its host.
 - **An async transition went on after a callback disposed the machine.** An exit or rollback exit that called `Dispose` was followed by the exits of the remaining states, whose scopes `Dispose` had destroyed, and a change with nothing left to enter completed with `OnChangedState`. The transition now stops after the state whose callback disposed the machine, gets no `OnChangedState` and fails with `StateMachineDisposedException` — or with a plain `OperationCanceledException` when the whole call ran synchronously, since UniTask reports a synchronous cancellation that way.
 - **An async transition with a cancelled token exited the old states.** `ChangeStateAsync`, `TransitionToAsync` and `TransitionViaAsync` called with a token that was already cancelled, or cancelled while they waited for an older transition to unwind, exited the active states, entered nothing and left `EmptyState`. They now throw `OperationCanceledException` before any guard, transition hook or `OnChangingState` runs, and the chain stays as it was.
-- **A cycle of parents hung the machine.** A state that implements `IChildState<Self>`, or two states that declare each other as parent, made `StateFactory.BuildTypeChain` loop forever, and with it `ChangeState`, `TransitionTo` and the async methods. It now throws `InvalidOperationException` naming the cycle (`A -> B -> A`); the active chain is left unchanged.
 - **`ChangeState(null)` exited every state.** A `null` type built an empty chain, so the change exited the whole chain, entered nothing and failed reading the leaf; a type that is not a state exited the old chain before its creation failed. Both are now rejected before the change starts.
+
+## [0.0.1-alpha.5] — 2026-10-16
+
+### Added
+
+- **`IEntrySelector`: a composite state picks its leaf.** `ChangeState<Composite>()` used to make the composite the leaf. A state that implements `IEntrySelector` is now entered fully — scope, enter controllers, and with `ChangeStateAsync` its async enter too — and then its `SelectEntry()` names the child to enter in the same transition; this repeats while the new leaf is a selector. The change ends, and `OnChangedState`, extension auto-detach and `OnEntered` run, once, with the final leaf. A change straight to a descendant passes the selector by, a change between its children does not enter it again, and a cancelled or superseded transition never asks it. A change that targets the composite while one of its children is active exits that child, does not enter the composite again and asks it again. `TransitionTo` / `TransitionVia` to a composite behave the same. `SelectEntry` returning `null` or a type that is not a direct child (`IChildState<Selector>`) throws `InvalidOperationException` naming both types; a synchronous change into an async-only entry throws as for any async-only state. These checks run once the selector has been entered, so the chain then ends at the selector.
+- **`[ExtensionFor(..., IncludeDescendants = true)]`**: the extension attaches while a listed state is anywhere in the active chain, stays attached while the leaf changes inside it, and is detached once it exits. Without the flag nothing changes: a listed state must be the leaf. Either way a listed type matches as `is` does, base classes and interfaces included.
+- `StateHierarchy`: `GetParentType(Type)` and `IsSelfOrDescendantOf(Type, Type)`, the parent relations declared by `IChildState<T>`, read from the types without creating states. `StateFactory.GetParentType` delegates to it.
+
+### Fixed
+
+- **A cycle in the declared parents hung the state change.** `X : IChildState<X>`, or two states naming each other, made the chain never reach a root. Building the chain now throws `InvalidOperationException` naming the type where the cycle closes.
 
 ## [0.0.1-alpha.4] — 2026-10-13
 
@@ -146,7 +158,8 @@ Three Roslyn incremental generators, each triggered via an attribute on a `parti
 - Dependency on [UniTask](https://github.com/Cysharp/UniTask) for the async enter/exit controllers.
 - **Game Loop** sample: a full state hierarchy with guarded transitions, async loading, extensions, scopes and extension points.
 
-[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.4...HEAD
+[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.5...HEAD
+[0.0.1-alpha.5]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.5
 [0.0.1-alpha.4]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.4
 [0.0.1-alpha.3]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.3
 [0.0.1-alpha.2]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.2

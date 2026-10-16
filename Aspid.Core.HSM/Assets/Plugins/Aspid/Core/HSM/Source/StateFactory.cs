@@ -20,7 +20,6 @@ namespace Aspid.Core.HSM
     public abstract class StateFactory
     {
         private readonly HashSet<Type> _initializedStates = new();
-        private readonly Dictionary<Type, Type?> _parentTypeCache = new();
 
         private IStateScope? _rootScope;
         private readonly Dictionary<Type, IStateScope> _activeScopes = new();
@@ -37,8 +36,8 @@ namespace Aspid.Core.HSM
         /// <param name="leafType">The target leaf state type.</param>
         /// <param name="destination">The list to fill. Cleared before use.</param>
         /// <exception cref="InvalidOperationException">
-        /// A state in the chain implements <see cref="IChildState"/> without <see cref="IChildState{T}"/>. Or the
-        /// declared parents form a cycle, such as a state that is its own parent; <paramref name="destination"/> is then cleared.
+        /// A state in the chain implements <see cref="IChildState"/> without <see cref="IChildState{T}"/>,
+        /// or the parents declared by <see cref="IChildState{T}"/> form a cycle; <paramref name="destination"/> is then cleared.
         /// </exception>
         public void BuildTypeChain(Type leafType, List<Type> destination)
         {
@@ -46,7 +45,8 @@ namespace Aspid.Core.HSM
 
             for (Type? type = leafType; type is not null; type = GetParentType(type))
             {
-                // A linear search: chains are a few states deep, and the walk stays allocation-free.
+                // A cycle in the declared parents would otherwise never reach a root. A linear search: chains are a
+                // few states deep, and the walk stays allocation-free.
                 var cycleStart = destination.IndexOf(type);
                 if (cycleStart >= 0)
                 {
@@ -70,8 +70,8 @@ namespace Aspid.Core.HSM
 
             names.Add(chain[cycleStart].Name);
             return new InvalidOperationException(
-                $"The {nameof(IChildState)}<TParent> parents of '{chain[0].Name}' form a cycle: {string.Join(" -> ", names)}. " +
-                $"A state cannot be its own ancestor.");
+                $"The parents declared through {nameof(IChildState)}<TParent> above '{chain[0].Name}' form a cycle: " +
+                $"{string.Join(" -> ", names)}. A state cannot be its own ancestor.");
         }
 
         /// <summary>
@@ -82,33 +82,7 @@ namespace Aspid.Core.HSM
         /// <exception cref="InvalidOperationException">
         /// <paramref name="stateType"/> implements <see cref="IChildState"/> without <see cref="IChildState{T}"/>.
         /// </exception>
-        public Type? GetParentType(Type stateType)
-        {
-            if (_parentTypeCache.TryGetValue(stateType, out var parentType))
-                return parentType;
-
-            if (typeof(IChildState).IsAssignableFrom(stateType))
-            {
-                foreach (var contract in stateType.GetInterfaces())
-                {
-                    if (!contract.IsGenericType || contract.GetGenericTypeDefinition() != typeof(IChildState<>))
-                        continue;
-
-                    parentType = contract.GetGenericArguments()[0];
-                    break;
-                }
-
-                // The parent must be known from the type alone: a state is created inside its parent's scope,
-                // so reading the parent off an instance would mean creating the state before its scope exists.
-                if (parentType is null)
-                    throw new InvalidOperationException(
-                        $"{stateType} implements {nameof(IChildState)} without {nameof(IChildState)}<TParent>. " +
-                        $"Declare the parent by implementing {nameof(IChildState)}<TParent>.");
-            }
-
-            _parentTypeCache[stateType] = parentType;
-            return parentType;
-        }
+        public Type? GetParentType(Type stateType) => StateHierarchy.GetParentType(stateType);
 
         /// <summary>
         /// Creates a state of <paramref name="stateType"/> inside its own scope. The scope is activated first —

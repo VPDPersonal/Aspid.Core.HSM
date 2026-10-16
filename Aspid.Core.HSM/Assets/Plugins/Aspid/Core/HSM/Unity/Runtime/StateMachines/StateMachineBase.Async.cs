@@ -44,6 +44,7 @@ namespace Aspid.Core.HSM
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
         /// <exception cref="InvalidOperationException">
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// Or an <see cref="IEntrySelector"/> returns <see langword="null"/> or a state that is not its direct child.
         /// </exception>
         /// <exception cref="TransitionSupersededException">
         /// A newer async transition superseded this one. Failures of its rollback are in
@@ -197,6 +198,16 @@ namespace Aspid.Core.HSM
                     {
                         token.ThrowIfCancellationRequested();
                         var state = _stateFactory.CreateState(newChain[i]);
+                        _currentStates.Add(state);
+                        await EnterStateAsync(state, token);
+                    }
+
+                    // A composite target picks its entry child once its enter, async part included, has completed.
+                    // A cancelled or superseded transition stops before the selector is asked.
+                    while (_currentStates[^1] is IEntrySelector selector)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var state = _stateFactory.CreateState(SelectEntryType(selector));
                         _currentStates.Add(state);
                         await EnterStateAsync(state, token);
                     }
