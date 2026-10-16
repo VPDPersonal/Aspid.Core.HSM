@@ -17,6 +17,10 @@ namespace Aspid.Core.HSM
     /// A change that targets a descendant directly passes through this state without calling it, and a change between
     /// two of its children does not enter it again. A cancelled or superseded transition never reaches it.
     /// </para>
+    /// <para>
+    /// A change that targets this state while one of its descendants is active exits that descendant, does not enter this
+    /// state again, and asks it again: the child it selects is entered, even if it is the one that just exited.
+    /// </para>
     /// </remarks>
     public interface IEntrySelector
     {

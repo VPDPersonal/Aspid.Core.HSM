@@ -27,13 +27,14 @@ namespace Aspid.Core.HSM
             _parentTypes.GetOrAdd(stateType, static type => ReadParentType(type));
 
         /// <summary>
-        /// Returns whether <paramref name="stateType"/> is <paramref name="ancestorType"/> or one of its descendants.
+        /// Returns whether <paramref name="stateType"/> or one of the states above it is a <paramref name="ancestorType"/>.
         /// </summary>
         /// <remarks>
-        /// For the leaf of the active chain this answers whether <paramref name="ancestorType"/> is active.
+        /// A state matches as the <see langword="is"/> operator does, so <paramref name="ancestorType"/> may also be a base
+        /// class or an interface of the state. For the leaf of the active chain this answers whether such a state is active.
         /// </remarks>
         /// <param name="stateType">The state type to test, typically the active leaf.</param>
-        /// <param name="ancestorType">The state type to look for in the chain above <paramref name="stateType"/>.</param>
+        /// <param name="ancestorType">The state type, base class or interface to look for in the chain.</param>
         /// <returns><see langword="true"/> if the chain of parents from <paramref name="stateType"/> reaches
         /// <paramref name="ancestorType"/>; otherwise, <see langword="false"/>.</returns>
         /// <exception cref="InvalidOperationException">The parents above <paramref name="stateType"/> form a cycle.</exception>
@@ -43,7 +44,7 @@ namespace Aspid.Core.HSM
             var depth = 0;
             for (Type? type = stateType; type is not null; type = GetParentType(type))
             {
-                if (type == ancestorType)
+                if (ancestorType.IsAssignableFrom(type))
                     return true;
 
                 if (++depth > MaxDepth)

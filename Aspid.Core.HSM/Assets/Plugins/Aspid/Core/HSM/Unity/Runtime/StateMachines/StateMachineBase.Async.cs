@@ -44,6 +44,7 @@ namespace Aspid.Core.HSM
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
         /// <exception cref="InvalidOperationException">
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
+        /// Or an <see cref="IEntrySelector"/> returns <see langword="null"/> or a state that is not its direct child.
         /// </exception>
         /// <exception cref="TransitionSupersededException">
         /// A newer async transition superseded this one. Failures of its rollback are in

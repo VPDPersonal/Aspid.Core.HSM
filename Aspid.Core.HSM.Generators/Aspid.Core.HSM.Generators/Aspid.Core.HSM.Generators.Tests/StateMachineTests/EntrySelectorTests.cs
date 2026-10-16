@@ -28,7 +28,10 @@ public abstract class SelLogged : IState
 public sealed class SelRoot : SelLogged;
 
 /// <summary>Composite whose entry child is chosen by <see cref="Entry"/>.</summary>
-public sealed class SelComposite : SelLogged, IChildState<SelRoot>, IEntrySelector, IEnteredController
+/// <summary>Marker a host can be named by in [ExtensionFor], instead of its class.</summary>
+public interface ISelStage : IState;
+
+public sealed class SelComposite : SelLogged, IChildState<SelRoot>, IEntrySelector, IEnteredController, ISelStage
 {
     public Func<Type> Entry { get; set; } = () => typeof(SelLeafA);
 
@@ -201,6 +204,36 @@ public class EntrySelectorTests
         Assert.Equal(typeof(SelLeafB), Chain[^1]);
     }
 
+    // Targeting the composite while one of its children is active: the child exits, the composite stays, and it is
+    // asked again, even when it picks the child that just exited.
+    [Fact]
+    public void Targeting_the_active_composite_again_asks_it_again_without_entering_it()
+    {
+        _sm.ChangeState<SelComposite>();
+
+        _sm.ChangeState<SelComposite>();
+
+        Assert.Equal(new[] { typeof(SelRoot), typeof(SelComposite), typeof(SelLeafA) }, Chain);
+        Assert.Equal(1, _composite.EnterCalled);
+        Assert.Equal(2, _composite.SelectCalled);
+        Assert.Equal(2, _leafA.EnterCalled);
+        Assert.Equal(2, _leafA.EnteredCalled);
+    }
+
+    [Fact]
+    public async Task Targeting_the_active_composite_again_async_asks_it_again_without_entering_it()
+    {
+        var task = _sm.ChangeStateAsync<SelAsyncComposite>();
+        _asyncComposite.CompleteEnter();
+        await task;
+
+        await _sm.ChangeStateAsync<SelAsyncComposite>();
+
+        Assert.Equal(new[] { typeof(SelRoot), typeof(SelAsyncComposite), typeof(SelAsyncLeaf) }, Chain);
+        Assert.Equal(1, _asyncComposite.EnterCalled);
+        Assert.Equal(2, _asyncComposite.SelectCalled);
+    }
+
     [Fact]
     public void TransitionTo_a_composite_descends_like_ChangeState()
     {
@@ -264,6 +297,9 @@ public class EntrySelectorTests
 
         Assert.Contains(nameof(SelAsyncOnlyLeaf), exception.Message);
         Assert.Contains("ChangeStateAsync", exception.Message);
+
+        // Known only once the selector has been entered: the chain ends at the selector.
+        Assert.Equal(typeof(SelComposite), Chain[^1]);
     }
 
     [Fact]
