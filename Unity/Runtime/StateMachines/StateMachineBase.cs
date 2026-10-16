@@ -154,6 +154,8 @@ namespace Aspid.Core.HSM
         /// An async transition is already in progress. Or a state on the path implements <see cref="IAsyncEnterController"/>
         /// without <see cref="IEnterController"/>, or <see cref="IAsyncExitController"/> without <see cref="IExitController"/>;
         /// the chain is then left unchanged.
+        /// Or an <see cref="IEntrySelector"/> returns <see langword="null"/>, a state that is not its direct child, or an
+        /// async-only one; that is known only once the selector has been entered, so the chain then ends at the selector.
         /// </exception>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
