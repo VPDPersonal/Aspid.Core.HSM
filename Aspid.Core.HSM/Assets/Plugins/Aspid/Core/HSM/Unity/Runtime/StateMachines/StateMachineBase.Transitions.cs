@@ -215,7 +215,10 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         /// <exception cref="ArgumentNullException"><paramref name="targetType"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="targetType"/> does not implement <see cref="IState"/>.</exception>
-        public async UniTask TransitionToAsync(Type targetType, CancellationToken ct = default)
+        public UniTask TransitionToAsync(Type targetType, CancellationToken ct = default) =>
+            UnwrapEndCause(RunTransitionToAsync(targetType, ct));
+
+        private async UniTask RunTransitionToAsync(Type targetType, CancellationToken ct)
         {
             ThrowIfNotStateType(targetType, nameof(targetType));
 
@@ -313,7 +316,10 @@ namespace Aspid.Core.HSM
         /// <param name="ct">Cancellation token for the transition.</param>
         /// <exception cref="ArgumentNullException"><paramref name="transitionType"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="transitionType"/> does not implement <see cref="ITransition"/>.</exception>
-        public async UniTask TransitionViaAsync(Type transitionType, CancellationToken ct = default)
+        public UniTask TransitionViaAsync(Type transitionType, CancellationToken ct = default) =>
+            UnwrapEndCause(RunTransitionViaAsync(transitionType, ct));
+
+        private async UniTask RunTransitionViaAsync(Type transitionType, CancellationToken ct)
         {
             ThrowIfNotTransitionType(transitionType);
 

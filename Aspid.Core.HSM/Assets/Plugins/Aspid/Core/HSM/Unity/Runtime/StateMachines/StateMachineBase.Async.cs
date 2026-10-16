@@ -70,7 +70,10 @@ namespace Aspid.Core.HSM
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
         /// <exception cref="ArgumentNullException"><paramref name="stateType"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="stateType"/> does not implement <see cref="IState"/>.</exception>
-        public async UniTask ChangeStateAsync(Type stateType, CancellationToken cancellationToken = default)
+        public UniTask ChangeStateAsync(Type stateType, CancellationToken cancellationToken = default) =>
+            UnwrapEndCause(RunChangeStateAsync(stateType, cancellationToken));
+
+        private async UniTask RunChangeStateAsync(Type stateType, CancellationToken cancellationToken)
         {
             ThrowIfNotStateType(stateType, nameof(stateType));
 
@@ -116,7 +119,7 @@ namespace Aspid.Core.HSM
         private void ThrowIfEndedWhileWaiting(CancellationToken cancellationToken)
         {
             if (_isDisposed)
-                throw new StateMachineDisposedException(null, cancellationToken);
+                throw new EndCauseCarrier(new StateMachineDisposedException(null, cancellationToken));
 
             cancellationToken.ThrowIfCancellationRequested();
         }
@@ -143,7 +146,7 @@ namespace Aspid.Core.HSM
             }
             catch (Exception exception) when (run.EndedBySupersedeOrDispose)
             {
-                throw run.ToException(exception);
+                throw new EndCauseCarrier(run.ToException(exception));
             }
             finally
             {
@@ -236,6 +239,73 @@ namespace Aspid.Core.HSM
             }
             OnChangedState();
             AutoDetachIncompatibleExtensions();
+        }
+
+        // UniTask completes an async method that ends without a real await through UniTask.FromException, which turns
+        // every OperationCanceledException into a plain one. A superseded or disposed transition that never awaited
+        // would lose its type at each private async method it passes, so they carry it in an EndCauseCarrier, which
+        // UniTask passes on as is, and each public async method unwraps it here.
+        private static UniTask UnwrapEndCause(UniTask task)
+        {
+            var status = task.Status;
+            if (status == UniTaskStatus.Pending)
+                return UnwrapEndCauseAsync(task);
+
+            if (status != UniTaskStatus.Faulted)
+                return task;
+
+            try
+            {
+                task.GetAwaiter().GetResult();
+                return UniTask.CompletedTask;
+            }
+            catch (EndCauseCarrier carrier)
+            {
+                return new UniTask(new EndCauseSource(carrier.Cause), 0);
+            }
+            catch (Exception exception)
+            {
+                return UniTask.FromException(exception);
+            }
+        }
+
+        // The task is pending, so the await suspends, and this method then completes through UniTask's async path,
+        // which keeps the type of an OperationCanceledException.
+        private static async UniTask UnwrapEndCauseAsync(UniTask task)
+        {
+            try
+            {
+                await task;
+            }
+            catch (EndCauseCarrier carrier)
+            {
+                throw carrier.Cause;
+            }
+        }
+
+        // Not an OperationCanceledException, so UniTask keeps it. Only the private async methods throw it, and
+        // UnwrapEndCause takes it off before the caller sees it.
+        private sealed class EndCauseCarrier : Exception
+        {
+            public EndCauseCarrier(OperationCanceledException cause) : base(cause.Message, cause) => Cause = cause;
+
+            public OperationCanceledException Cause { get; }
+        }
+
+        // A UniTask already cancelled with the given exception. UniTask.FromCanceled would throw a new, plain one.
+        private sealed class EndCauseSource : IUniTaskSource
+        {
+            private readonly OperationCanceledException _exception;
+
+            public EndCauseSource(OperationCanceledException exception) => _exception = exception;
+
+            public UniTaskStatus GetStatus(short token) => UniTaskStatus.Canceled;
+
+            public UniTaskStatus UnsafeGetStatus() => UniTaskStatus.Canceled;
+
+            public void GetResult(short token) => throw _exception;
+
+            public void OnCompleted(Action<object> continuation, object state, short token) => continuation(state);
         }
 
         // Why the running transition was cancelled. Whoever cancels it records the cause first; the first cause wins.
