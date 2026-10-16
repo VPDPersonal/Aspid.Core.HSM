@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`IEntrySelector`: a composite state picks its leaf.** `ChangeState<Composite>()` used to make the composite the leaf. A state that implements `IEntrySelector` is now entered fully — scope, enter controllers, and with `ChangeStateAsync` its async enter too — and then its `SelectEntry()` names the child to enter in the same transition; this repeats while the new leaf is a selector. The change ends, and `OnChangedState`, extension auto-detach and `OnEntered` run, once, with the final leaf. A change straight to a descendant passes the selector by, a change between its children does not enter it again, and a cancelled or superseded transition never asks it. `TransitionTo` / `TransitionVia` to a composite behave the same. `SelectEntry` returning `null` or a type that is not a direct child (`IChildState<Selector>`) throws `InvalidOperationException` naming both types; a synchronous change into an async-only entry throws as for any async-only state.
+- **`[ExtensionFor(..., IncludeDescendants = true)]`**: the extension attaches while a listed state is anywhere in the active chain, stays attached while the leaf changes inside it, and is detached once it exits. Without the flag nothing changes: a listed state must be the leaf.
+- `StateHierarchy`: `GetParentType(Type)` and `IsSelfOrDescendantOf(Type, Type)`, the parent relations declared by `IChildState<T>`, read from the types without creating states. `StateFactory.GetParentType` delegates to it.
+
+### Fixed
+
+- **A cycle in the declared parents hung the state change.** `X : IChildState<X>`, or two states naming each other, made the chain never reach a root. Building the chain now throws `InvalidOperationException` naming the type where the cycle closes.
+
 ## [0.0.1-alpha.4] — 2026-10-13
 
 ### Added

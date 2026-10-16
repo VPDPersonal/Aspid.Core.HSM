@@ -38,6 +38,12 @@ public static class ExtensionStateBody
         var typeNames = data.CompatibleStates
             .Select(static t => t.ToDisplayStringGlobal());
 
+        // The host is the active leaf, and its chain of parents is fixed by its type: a listed state is in the active
+        // chain exactly when the leaf is that state or one of its descendants.
+        if (data.IncludeDescendants)
+            return string.Join(" || ", typeNames.Select(static name =>
+                $"global::{StateHierarchy.FullName}.IsSelfOrDescendantOf(hostState.GetType(), typeof({name}))"));
+
         return "hostState is " + string.Join(" or ", typeNames);
     }
 }

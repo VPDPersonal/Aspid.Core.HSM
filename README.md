@@ -9,7 +9,7 @@
 > [!WARNING]
 > **Work in progress.** Aspid.Core.HSM is under active development. The public API is not yet stable and may change without notice between releases. Use with care in production.
 
-**Aspid.Core.HSM** is a Roslyn-powered Hierarchical State Machine for Unity, built from small composable abstractions: states with `Enter` / `Exit` hooks, a parent→child hierarchy expressed through the generic `IChildState<TParent>` interface, pluggable per-frame controllers (`IUpdateController`, `IFixedUpdateController`, `ILateUpdateController`, …) aggregated via `[ControllerGroup]`, declarative guarded transitions (`[Transition]`), extension states (`[ExtensionFor]`), state scopes and async enter/exit (`ChangeStateAsync`). `IEnteredController` runs once the transition that entered a state has completed, with a token that lives as long as the state. `MonoStateMachine` wires it all to the Unity `MonoBehaviour` lifecycle.
+**Aspid.Core.HSM** is a Roslyn-powered Hierarchical State Machine for Unity, built from small composable abstractions: states with `Enter` / `Exit` hooks, a parent→child hierarchy expressed through the generic `IChildState<TParent>` interface, pluggable per-frame controllers (`IUpdateController`, `IFixedUpdateController`, `ILateUpdateController`, …) aggregated via `[ControllerGroup]`, composites that pick their own leaf (`IEntrySelector`), declarative guarded transitions (`[Transition]`), extension states (`[ExtensionFor]`), state scopes and async enter/exit (`ChangeStateAsync`). `IEnteredController` runs once the transition that entered a state has completed, with a token that lives as long as the state. `MonoStateMachine` wires it all to the Unity `MonoBehaviour` lifecycle.
 
 ## Integration
 

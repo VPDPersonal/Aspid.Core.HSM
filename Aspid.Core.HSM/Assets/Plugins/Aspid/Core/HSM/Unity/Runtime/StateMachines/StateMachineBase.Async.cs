@@ -189,6 +189,16 @@ namespace Aspid.Core.HSM
                         _currentStates.Add(state);
                         await EnterStateAsync(state, token);
                     }
+
+                    // A composite target picks its entry child once its enter, async part included, has completed.
+                    // A cancelled or superseded transition stops before the selector is asked.
+                    while (_currentStates[^1] is IEntrySelector selector)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var state = _stateFactory.CreateState(SelectEntryType(selector));
+                        _currentStates.Add(state);
+                        await EnterStateAsync(state, token);
+                    }
                 }
                 catch (Exception exception)
                 {
