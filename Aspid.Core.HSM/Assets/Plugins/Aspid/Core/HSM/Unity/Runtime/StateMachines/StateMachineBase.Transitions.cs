@@ -41,6 +41,11 @@ namespace Aspid.Core.HSM
         /// A failure inside the state change itself stops it midway, as in <see cref="ChangeState{TState}"/>:
         /// exited states stay exited, and <see cref="OnChangedState"/> still runs before the exception propagates.
         /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// A state on the path has an async-only enter or exit; checked before any transition hook, the chain is left unchanged.
+        /// Or an <see cref="IEntrySelector"/> returns <see langword="null"/>, a state that is not its direct child, or an
+        /// async-only one; that is known only once the selector has been entered, so the chain then ends at the selector.
+        /// </exception>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
         /// Or several extensions threw while the change detached them.
@@ -118,6 +123,11 @@ namespace Aspid.Core.HSM
         /// A failure inside the state change itself stops it midway, as in <see cref="ChangeState{TState}"/>:
         /// exited states stay exited, and <see cref="OnChangedState"/> still runs before the exception propagates.
         /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// A state on the path has an async-only enter or exit; checked before any transition hook, the chain is left unchanged.
+        /// Or an <see cref="IEntrySelector"/> returns <see langword="null"/>, a state that is not its direct child, or an
+        /// async-only one; that is known only once the selector has been entered, so the chain then ends at the selector.
+        /// </exception>
         /// <exception cref="AggregateException">
         /// A state threw, and then <see cref="OnChangedState"/> or an extension's detach threw too; the state's exception comes first.
         /// Or several extensions threw while the change detached them.
@@ -171,6 +181,7 @@ namespace Aspid.Core.HSM
         /// <exception cref="InvalidOperationException">
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
         /// Or <see cref="StrictTransitions"/> is enabled and no registered transition covers the whole path.
+        /// Or an <see cref="IEntrySelector"/> returns <see langword="null"/> or a state that is not its direct child.
         /// </exception>
         /// <exception cref="TransitionSupersededException">
         /// A newer async transition superseded this one. Failures of its rollback are in
@@ -263,6 +274,7 @@ namespace Aspid.Core.HSM
         /// <exception cref="InvalidOperationException">
         /// A synchronous state change is in progress, for example when called from a synchronous enter or exit callback.
         /// Or the transition type is not registered.
+        /// Or an <see cref="IEntrySelector"/> returns <see langword="null"/> or a state that is not its direct child.
         /// </exception>
         /// <exception cref="TransitionSupersededException">
         /// A newer async transition superseded this one. Failures of its rollback are in

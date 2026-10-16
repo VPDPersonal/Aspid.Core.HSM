@@ -11,6 +11,7 @@ public static class HsmClasses
     public static readonly TypeText ITransition = new(nameof(ITransition), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly TypeText IState = new(nameof(IState), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly TypeText IExtensionState = new(nameof(IExtensionState), namespaceText: HsmNamespaces.Aspid_Core_HSM);
+    public static readonly TypeText StateHierarchy = new(nameof(StateHierarchy), namespaceText: HsmNamespaces.Aspid_Core_HSM);
 
     public static readonly AttributeText ReverseExecuteAttribute = new(nameof(ReverseExecuteAttribute), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly AttributeText ControllerGroupAttribute = new(nameof(ControllerGroupAttribute), namespaceText: HsmNamespaces.Aspid_Core_HSM);

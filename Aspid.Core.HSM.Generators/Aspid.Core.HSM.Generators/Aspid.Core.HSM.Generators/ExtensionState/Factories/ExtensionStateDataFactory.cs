@@ -53,6 +53,9 @@ public static class ExtensionStateDataFactory
             return null;
         }
 
-        return new ExtensionStateData(classDeclarationSyntax, compatibleStates);
+        var includeDescendants = extensionForAttribute.NamedArguments
+            .Any(static argument => argument is { Key: "IncludeDescendants", Value.Value: true });
+
+        return new ExtensionStateData(classDeclarationSyntax, compatibleStates, includeDescendants);
     }
 }
