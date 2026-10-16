@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1-alpha.5] — 2026-10-16
+
 ### Added
 
 - **`IEntrySelector`: a composite state picks its leaf.** `ChangeState<Composite>()` used to make the composite the leaf. A state that implements `IEntrySelector` is now entered fully — scope, enter controllers, and with `ChangeStateAsync` its async enter too — and then its `SelectEntry()` names the child to enter in the same transition; this repeats while the new leaf is a selector. The change ends, and `OnChangedState`, extension auto-detach and `OnEntered` run, once, with the final leaf. A change straight to a descendant passes the selector by, a change between its children does not enter it again, and a cancelled or superseded transition never asks it. A change that targets the composite while one of its children is active exits that child, does not enter the composite again and asks it again. `TransitionTo` / `TransitionVia` to a composite behave the same. `SelectEntry` returning `null` or a type that is not a direct child (`IChildState<Selector>`) throws `InvalidOperationException` naming both types; a synchronous change into an async-only entry throws as for any async-only state. These checks run once the selector has been entered, so the chain then ends at the selector.
@@ -134,7 +136,8 @@ Three Roslyn incremental generators, each triggered via an attribute on a `parti
 - Dependency on [UniTask](https://github.com/Cysharp/UniTask) for the async enter/exit controllers.
 - **Game Loop** sample: a full state hierarchy with guarded transitions, async loading, extensions, scopes and extension points.
 
-[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.4...HEAD
+[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.5...HEAD
+[0.0.1-alpha.5]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.5
 [0.0.1-alpha.4]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.4
 [0.0.1-alpha.3]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.3
 [0.0.1-alpha.2]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.2
