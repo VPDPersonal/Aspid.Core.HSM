@@ -55,8 +55,12 @@ namespace Aspid.Core.HSM
 
         /// <inheritdoc cref="TransitionTo{TTarget}"/>
         /// <param name="targetType">The target leaf state type.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="targetType"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="targetType"/> does not implement <see cref="IState"/>.</exception>
         public void TransitionTo(Type targetType)
         {
+            ThrowIfNotStateType(targetType, nameof(targetType));
+
             // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
             if (_isDisposed)
                 return;
@@ -137,8 +141,12 @@ namespace Aspid.Core.HSM
 
         /// <inheritdoc cref="TransitionVia{TTransition}"/>
         /// <param name="transitionType">The registered transition type to execute.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="transitionType"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="transitionType"/> does not implement <see cref="ITransition"/>.</exception>
         public void TransitionVia(Type transitionType)
         {
+            ThrowIfNotTransitionType(transitionType);
+
             // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
             if (_isDisposed)
                 return;
@@ -205,20 +213,25 @@ namespace Aspid.Core.HSM
         /// <inheritdoc cref="TransitionToAsync{TTarget}"/>
         /// <param name="targetType">The target leaf state type.</param>
         /// <param name="ct">Cancellation token for the transition.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="targetType"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="targetType"/> does not implement <see cref="IState"/>.</exception>
         public async UniTask TransitionToAsync(Type targetType, CancellationToken ct = default)
         {
+            ThrowIfNotStateType(targetType, nameof(targetType));
+
             // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
             if (_isDisposed)
                 return;
 
             ThrowIfSyncChangeInProgress();
+            ct.ThrowIfCancellationRequested();
 
             if (!IsStateEnabled(targetType))
                 return;
 
             // Resolve the edge only after the superseded transition has unwound, as ChangeStateAsync does.
             await SupersedeActiveTransitionAsync(targetType);
-            ThrowIfDisposedWhileWaiting(ct);
+            ThrowIfEndedWhileWaiting(ct);
             var currentLeafType = _currentStates[^1].GetType();
 
             if (!IsTransitionEnabled(currentLeafType, targetType))
@@ -298,13 +311,18 @@ namespace Aspid.Core.HSM
         /// <inheritdoc cref="TransitionViaAsync{TTransition}"/>
         /// <param name="transitionType">The registered transition type to execute.</param>
         /// <param name="ct">Cancellation token for the transition.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="transitionType"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="transitionType"/> does not implement <see cref="ITransition"/>.</exception>
         public async UniTask TransitionViaAsync(Type transitionType, CancellationToken ct = default)
         {
+            ThrowIfNotTransitionType(transitionType);
+
             // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
             if (_isDisposed)
                 return;
 
             ThrowIfSyncChangeInProgress();
+            ct.ThrowIfCancellationRequested();
 
             var transition = FindTransitionByType(transitionType);
 
@@ -312,7 +330,7 @@ namespace Aspid.Core.HSM
                 return;
 
             await SupersedeActiveTransitionAsync(transition.TargetState);
-            ThrowIfDisposedWhileWaiting(ct);
+            ThrowIfEndedWhileWaiting(ct);
             var currentLeafType = _currentStates[^1].GetType();
 
             // Checked after the supersede, like the edge guard: the source must be active in the chain that the
@@ -444,6 +462,26 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region Helpers
+        // Checked before a request is queued: a null type builds an empty chain, which exits every state and enters
+        // none, and a type that is not a state exits the old chain before its creation fails.
+        private static void ThrowIfNotStateType(Type stateType, string paramName)
+        {
+            if (stateType is null)
+                throw new ArgumentNullException(paramName);
+
+            if (!typeof(IState).IsAssignableFrom(stateType))
+                throw new ArgumentException($"'{stateType}' does not implement {nameof(IState)}.", paramName);
+        }
+
+        private static void ThrowIfNotTransitionType(Type transitionType)
+        {
+            if (transitionType is null)
+                throw new ArgumentNullException(nameof(transitionType));
+
+            if (!typeof(ITransition).IsAssignableFrom(transitionType))
+                throw new ArgumentException($"'{transitionType}' does not implement {nameof(ITransition)}.", nameof(transitionType));
+        }
+
         private void ThrowIfAsyncTransitionInProgress()
         {
             if (_activeTransitionCts is not null)

@@ -37,7 +37,7 @@ namespace Aspid.Core.HSM
         /// <param name="destination">The list to fill. Cleared before use.</param>
         /// <exception cref="InvalidOperationException">
         /// A state in the chain implements <see cref="IChildState"/> without <see cref="IChildState{T}"/>,
-        /// or the parents declared by <see cref="IChildState{T}"/> form a cycle.
+        /// or the parents declared by <see cref="IChildState{T}"/> form a cycle; <paramref name="destination"/> is then cleared.
         /// </exception>
         public void BuildTypeChain(Type leafType, List<Type> destination)
         {
@@ -45,14 +45,33 @@ namespace Aspid.Core.HSM
 
             for (Type? type = leafType; type is not null; type = GetParentType(type))
             {
-                // A cycle in the declared parents would otherwise never reach a root.
-                if (destination.Contains(type))
-                    throw StateHierarchy.CycleException(leafType, type);
+                // A cycle in the declared parents would otherwise never reach a root. A linear search: chains are a
+                // few states deep, and the walk stays allocation-free.
+                var cycleStart = destination.IndexOf(type);
+                if (cycleStart >= 0)
+                {
+                    var cycle = ParentCycle(destination, cycleStart);
+                    destination.Clear();
+                    throw cycle;
+                }
 
                 destination.Add(type);
             }
 
             destination.Reverse();
+        }
+
+        // The chain is still leaf-to-root here, so the cycle reads from child to parent.
+        private static InvalidOperationException ParentCycle(List<Type> chain, int cycleStart)
+        {
+            var names = new List<string>(chain.Count - cycleStart + 1);
+            for (var i = cycleStart; i < chain.Count; i++)
+                names.Add(chain[i].Name);
+
+            names.Add(chain[cycleStart].Name);
+            return new InvalidOperationException(
+                $"The parents declared through {nameof(IChildState)}<TParent> above '{chain[0].Name}' form a cycle: " +
+                $"{string.Join(" -> ", names)}. A state cannot be its own ancestor.");
         }
 
         /// <summary>
@@ -141,6 +160,7 @@ namespace Aspid.Core.HSM
         /// Releases a state after it has been exited. Removes it from the initialized set,
         /// calls <see cref="ReleaseInternal"/>, and disposes or caches its scope.
         /// </summary>
+        /// <remarks>The scope is disposed or cached even when <see cref="ReleaseInternal"/> throws.</remarks>
         /// <param name="state">The state to release. <see cref="EmptyState"/> is silently ignored.</param>
         public void Release(IState state)
         {
@@ -153,8 +173,15 @@ namespace Aspid.Core.HSM
             if (GetScopeLifetime(stateType) != ScopeLifetime.Cached)
                 _initializedStates.Remove(stateType);
 
-            ReleaseInternal(state);
-            ReleaseScope(stateType);
+            // A throwing ReleaseInternal must not leak the scope: it would outlive the state, cached or not.
+            try
+            {
+                ReleaseInternal(state);
+            }
+            finally
+            {
+                ReleaseScope(stateType);
+            }
         }
 
         /// <summary>

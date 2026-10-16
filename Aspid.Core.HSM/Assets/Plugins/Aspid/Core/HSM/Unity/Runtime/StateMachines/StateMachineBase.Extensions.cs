@@ -16,6 +16,10 @@ namespace Aspid.Core.HSM
         /// <inheritdoc />
         public void AttachExtension<T>() where T : IExtensionState
         {
+            // Dispose has destroyed every scope: the extension's would be created under a dead parent and never released.
+            if (_isDisposed)
+                return;
+
             // Scopes and initialization are keyed by Type in StateFactory, so a second instance of
             // the same extension type would share (and later dispose) the first one's scope. Dedupe.
             for (int i = 0; i < _activeExtensions.Count; i++)
@@ -64,7 +68,9 @@ namespace Aspid.Core.HSM
         private void DetachExtensionAt(int index)
         {
             var extension = _activeExtensions[index];
-            var leafState = _currentStates[^1];
+
+            // The chain is empty only for a moment, while an async exit of the last state unwinds, for example inside Dispose.
+            var leafState = _currentStates.Count > 0 ? _currentStates[^1] : new EmptyState();
 
             try
             {

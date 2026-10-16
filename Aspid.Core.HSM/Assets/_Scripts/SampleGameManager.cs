@@ -116,10 +116,5 @@ namespace _Scripts
             var chain = string.Join(" → ", System.Linq.Enumerable.Select(CurrentStates, s => s.GetType().Name));
             Debug.Log($"[Sample] State chain: {chain}");
         }
-
-        private void OnDestroy()
-        {
-            Dispose();
-        }
     }
 }

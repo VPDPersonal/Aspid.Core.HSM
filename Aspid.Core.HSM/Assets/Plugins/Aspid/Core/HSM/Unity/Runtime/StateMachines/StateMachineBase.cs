@@ -42,6 +42,12 @@ namespace Aspid.Core.HSM
         /// <inheritdoc />
         public IReadOnlyList<IState> CurrentStates => _currentStates;
 
+        /// <summary>
+        /// Gets a value indicating whether <see cref="Dispose"/> has been called. A disposed machine ignores state
+        /// changes, extension attaches and ticks.
+        /// </summary>
+        public bool IsDisposed => _isDisposed;
+
         /// <param name="stateFactory">The factory used to create and release state instances.</param>
         public StateMachineBase(StateFactory stateFactory)
         {
@@ -79,6 +85,10 @@ namespace Aspid.Core.HSM
         private void Tick<TController>(float deltaTime, Action<TController, float> invoke)
             where TController : IController
         {
+            // Dispose keeps the chain for inspection, but its states are disposed and must not be ticked.
+            if (_isDisposed)
+                return;
+
             _isTicking = true;
             try
             {
@@ -146,9 +156,15 @@ namespace Aspid.Core.HSM
         #region ChangeState
         /// <inheritdoc />
         /// <remarks>
+        /// <para>
         /// A state constructor, <see cref="IState.Exit"/> or <see cref="IState.Enter"/> that throws stops the change
         /// midway: exited states stay exited, and the chain ends at the last state reached, or at
         /// <see cref="EmptyState"/> when none is left. <see cref="OnChangedState"/> still runs, then the exception propagates.
+        /// </para>
+        /// <para>
+        /// An exit, once started, completes even when an exit callback throws: <see cref="IState.Exit"/> and
+        /// <see cref="StateFactory.Release"/> still run, and the state leaves the chain.
+        /// </para>
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// An async transition is already in progress. Or a state on the path implements <see cref="IAsyncEnterController"/>
@@ -167,8 +183,12 @@ namespace Aspid.Core.HSM
 
         /// <inheritdoc cref="ChangeState{TState}"/>
         /// <param name="stateType">The target leaf state type.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="stateType"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="stateType"/> does not implement <see cref="IState"/>.</exception>
         public void ChangeState(Type stateType)
         {
+            ThrowIfNotStateType(stateType, nameof(stateType));
+
             // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
             if (_isDisposed)
                 return;
@@ -207,8 +227,10 @@ namespace Aspid.Core.HSM
                 // created in a scope that Dispose has already destroyed.
                 for (var i = _currentStates.Count - 1; i >= divergeIndex && !_isDisposed; i--)
                 {
-                    ExitState(_currentStates[i]);
-                    _currentStates.RemoveAt(i);
+                    // An exit that has started always completes (see ExitState), so the state leaves the chain
+                    // even when its exit throws, and a retry does not exit it again.
+                    try { ExitState(_currentStates[i]); }
+                    finally { _currentStates.RemoveAt(i); }
                 }
 
                 // Each state is created only once its parent has been entered, so it is resolved from
@@ -473,24 +495,62 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region Exit
+        // An exit, once started, always completes, as in ExitStateAsync: IState.Exit and Release run even when the
+        // bound extensions' detach, OnExitingState or the exit controller throws. The callbacks that did not get to run
+        // are not called again, and OnExitedState runs only if OnExitingState did.
         private void ExitState(IState state)
         {
-            EndStateLifetime(state);
-
-            // Extensions bound to this state live in a child of its scope, which Release is about to dispose.
-            DetachExtensionsBoundTo(state);
-
-            OnExitingState(state);
-#if ENABLE_PROFILER
-            using (GetMarkers(state).Exit.Auto())
-#endif
+            var isExiting = false;
+            var isExited = false;
+            try
             {
-                state.GetController<IExitController>()?.OnExit();
-                state.Exit();
-            }
-            OnExitedState(state);
+                EndStateLifetime(state);
 
-            _stateFactory.Release(state);
+                // Extensions bound to this state live in a child of its scope, which Release is about to dispose.
+                DetachExtensionsBoundTo(state);
+
+                isExiting = true;
+                OnExitingState(state);
+#if ENABLE_PROFILER
+                using (GetMarkers(state).Exit.Auto())
+#endif
+                {
+                    try
+                    {
+                        state.GetController<IExitController>()?.OnExit();
+                    }
+                    finally
+                    {
+                        isExited = true;
+                        state.Exit();
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    if (!isExited)
+                    {
+#if ENABLE_PROFILER
+                        using (GetMarkers(state).Exit.Auto())
+#endif
+                        state.Exit();
+                    }
+                }
+                finally
+                {
+                    try
+                    {
+                        if (isExiting)
+                            OnExitedState(state);
+                    }
+                    finally
+                    {
+                        _stateFactory.Release(state);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -636,34 +696,105 @@ namespace Aspid.Core.HSM
         /// <see cref="IDisposableController"/>, and disposes all active and cached state scopes.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// States are not exited, and neither is a cancelled transition rolled back: its states, the half-entered one
         /// included, are disposed with the rest, and its caller gets <see cref="StateMachineDisposedException"/>.
-        /// From the moment it starts, state changes are ignored, also those requested by a callback it triggers.
-        /// A second call does nothing.
+        /// From the moment it starts, state changes, extension attaches and ticks are ignored, also those requested by
+        /// a callback it triggers. A second call does nothing.
+        /// </para>
+        /// <para>
+        /// Every step runs even if an earlier one throws: every extension is detached, every active state is disposed,
+        /// every scope is disposed, and <see cref="Disposed"/> is called. The failures are rethrown at the end.
+        /// </para>
         /// </remarks>
+        /// <exception cref="AggregateException">
+        /// Several steps threw: <see cref="Disposing"/>, a callback on the running transition's token, an extension's
+        /// detach, an <see cref="IDisposableController"/>, a scope or <see cref="Disposed"/>. A single failure is rethrown
+        /// as it is.
+        /// </exception>
         public void Dispose()
         {
             if (_isDisposed)
                 return;
 
             _isDisposed = true;
-            Disposing();
+            List<Exception>? failures = null;
+
+            try
+            {
+                Disposing();
+            }
+            catch (Exception exception)
+            {
+                (failures ??= new List<Exception>()).Add(exception);
+            }
+
+            try
             {
                 // Before the states are disposed: the cancelled core unwinds here when its callback ends synchronously.
                 // The cause is recorded first, so its caller gets StateMachineDisposedException whatever the timing.
                 _activeTransitionRun?.MarkDisposed();
                 _activeTransitionCts?.Cancel();
-                EndAllStateLifetimes();
+            }
+            catch (AggregateException exception)
+            {
+                // Cancel runs every callback and throws their failures together: kept flat with the other steps'.
+                (failures ??= new List<Exception>()).AddRange(exception.InnerExceptions);
+            }
+            catch (Exception exception)
+            {
+                (failures ??= new List<Exception>()).Add(exception);
+            }
 
-                for (int i = _activeExtensions.Count - 1; i >= 0; i--)
+            // The cancelled core may have exited the last state of the chain, as an async exit that was cut short.
+            if (_currentStates.Count == 0)
+                _currentStates.Add(new EmptyState());
+
+            EndAllStateLifetimes();
+
+            for (var i = _activeExtensions.Count - 1; i >= 0; i--)
+            {
+                try
+                {
                     DetachExtensionAt(i);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= new List<Exception>()).Add(exception);
+                }
+            }
 
-                foreach (var state in _currentStates)
-                    state.GetController<IDisposableController>()?.Dispose();
+            for (var i = 0; i < _currentStates.Count; i++)
+            {
+                try
+                {
+                    _currentStates[i].GetController<IDisposableController>()?.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= new List<Exception>()).Add(exception);
+                }
+            }
 
+            try
+            {
                 _stateFactory.DisposeAllScopes();
             }
-            Disposed();
+            catch (Exception exception)
+            {
+                (failures ??= new List<Exception>()).Add(exception);
+            }
+
+            try
+            {
+                Disposed();
+            }
+            catch (Exception exception)
+            {
+                (failures ??= new List<Exception>()).Add(exception);
+            }
+
+            ThrowFailures(failures);
         }
 
         /// <summary>

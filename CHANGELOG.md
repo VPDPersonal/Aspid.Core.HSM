@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `StateMachineBase.IsDisposed`.
+- **`MonoStateMachine` disposes itself in `OnDestroy`.** A destroyed component used to leave its states, extensions and scopes undisposed unless the subclass called `Dispose` itself. `OnDestroy` is `protected virtual`; an override must call `base.OnDestroy()`.
+
+### Changed
+
+- **`MonoStateMachine.Update`, `LateUpdate` and `FixedUpdate` are `protected virtual`.** They were `private`, so a subclass that declared its own `Update` silently replaced the machine's, and the states stopped ticking. Override them and call the base method. A subclass that declares `Update`, `LateUpdate`, `FixedUpdate` or `OnDestroy` without `override` now gets warning CS0114 and still hides the base method: make it `protected override` and call `base`. The `Game Loop` sample no longer calls `Dispose` from its own `OnDestroy`.
+- `MonoStateMachine.IsInitialized` is `false` again after `Dispose`, and `Initialize` then creates a new machine. Calls made between the two are ignored, as before.
+- The `InvalidOperationException` for a cycle in the declared parents names the whole cycle (`A -> B -> A`) instead of the type where it closes, and `StateFactory.BuildTypeChain` leaves its destination list empty.
+- `ChangeState(Type)`, `TransitionTo(Type)`, `TransitionVia(Type)` and their async overloads throw `ArgumentNullException` for `null` and `ArgumentException` for a type that is not an `IState` (an `ITransition` for the `Via` methods), before anything runs. `TransitionVia` with such a type used to throw `InvalidOperationException` ("not registered"). See the matching entry under Fixed.
+
+### Fixed
+
+- **A synchronous exit that throws now completes.** When an exit controller, `OnExitingState` or the detach of a bound extension threw, `ChangeState` left the state in the chain without calling `IState.Exit`, `OnExitedState` or `Release`, so its scope leaked, and the next change exited it again from the start. A started exit now completes as an async one does: `IState.Exit` and `Release` run, `OnExitedState` runs if `OnExitingState` did, the state leaves the chain, and the exception propagates. The callbacks that did not get to run are not called again.
+- **A disposed machine kept ticking and attaching.** `Update`, `LateUpdate` and `FixedUpdate` still reached the disposed states and extensions, and `AttachExtension` created an extension, and its scope, that nothing would release. Both now do nothing after `Dispose`.
+- **`Dispose` stopped at the first failure.** An `IDisposableController`, an extension's `OnDetached` or a callback on the running transition's token that threw left the other states undisposed, every scope alive and `Disposed` uncalled, and a second `Dispose` did nothing. Every step now runs: each extension is detached, each state disposed, every scope disposed and `Disposed` called, and the failures are rethrown at the end — one as it is, several as a flat `AggregateException`. `StateFactory.Release` disposes or caches the scope even when `ReleaseInternal` throws.
+- **`Dispose` threw `ArgumentOutOfRangeException` while the last state's async exit was waiting.** The cancelled exit removed the state and left the chain empty, and detaching the extensions read the leaf. The chain falls back to `EmptyState`, and an extension detached at that moment gets `EmptyState` as its host.
+- **An async transition went on after a callback disposed the machine.** An exit or rollback exit that called `Dispose` was followed by the exits of the remaining states, whose scopes `Dispose` had destroyed, and a change with nothing left to enter completed with `OnChangedState`. The transition now stops after the state whose callback disposed the machine, gets no `OnChangedState` and fails with `StateMachineDisposedException` — or with a plain `OperationCanceledException` when the whole call ran synchronously, since UniTask reports a synchronous cancellation that way.
+- **An async transition with a cancelled token exited the old states.** `ChangeStateAsync`, `TransitionToAsync` and `TransitionViaAsync` called with a token that was already cancelled, or cancelled while they waited for an older transition to unwind, exited the active states, entered nothing and left `EmptyState`. They now throw `OperationCanceledException` before any guard, transition hook or `OnChangingState` runs, and the chain stays as it was.
+- **`ChangeState(null)` exited every state.** A `null` type built an empty chain, so the change exited the whole chain, entered nothing and failed reading the leaf; a type that is not a state exited the old chain before its creation failed. Both are now rejected before the change starts.
+
 ## [0.0.1-alpha.5] — 2026-10-16
 
 ### Added

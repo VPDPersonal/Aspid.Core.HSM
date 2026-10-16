@@ -68,19 +68,26 @@ namespace Aspid.Core.HSM
         /// <inheritdoc cref="ChangeStateAsync{TState}"/>
         /// <param name="stateType">The target leaf state type.</param>
         /// <param name="cancellationToken">Cancellation token for the transition.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="stateType"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="stateType"/> does not implement <see cref="IState"/>.</exception>
         public async UniTask ChangeStateAsync(Type stateType, CancellationToken cancellationToken = default)
         {
+            ThrowIfNotStateType(stateType, nameof(stateType));
+
             // A disposed machine ignores state changes, also those a lifetime callback requests while Dispose runs.
             if (_isDisposed)
                 return;
 
             ThrowIfSyncChangeInProgress();
 
+            // Before anything runs: a cancelled transition would still exit the old states and enter nothing.
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!IsStateEnabled(stateType))
                 return;
 
             await SupersedeActiveTransitionAsync(stateType);
-            ThrowIfDisposedWhileWaiting(cancellationToken);
+            ThrowIfEndedWhileWaiting(cancellationToken);
 
             // Read the leaf only after the superseded transition has unwound: the edge being guarded
             // is the one actually taken, not the one that was current when this call was made.
@@ -104,12 +111,14 @@ namespace Aspid.Core.HSM
             }
         }
 
-        // Disposed while the call waited for an older transition to unwind: it never starts, and no guard or transition
-        // hook runs on the disposed machine. A call made after Dispose is ignored at its entry instead.
-        private void ThrowIfDisposedWhileWaiting(CancellationToken cancellationToken)
+        // Disposed or cancelled while the call waited for an older transition to unwind: it never starts, and no guard or
+        // transition hook runs. A call made after Dispose is ignored at its entry instead.
+        private void ThrowIfEndedWhileWaiting(CancellationToken cancellationToken)
         {
             if (_isDisposed)
                 throw new StateMachineDisposedException(null, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
         }
 
         // Runs the core with no guard checks: every caller has checked the guards already.
@@ -118,7 +127,7 @@ namespace Aspid.Core.HSM
             // Guards and transition hooks run between the caller's supersede and this point.
             // If one of them started a transition, supersede it too: two cores must never run at once.
             await SupersedeActiveTransitionAsync(stateType);
-            ThrowIfDisposedWhileWaiting(cancellationToken);
+            ThrowIfEndedWhileWaiting(cancellationToken);
 
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var run = new TransitionRun(linked.Token);
@@ -175,7 +184,9 @@ namespace Aspid.Core.HSM
                     _stateFactory.BuildTypeChain(stateType, newChain);
                     divergeIndex = FindDivergeIndex(newChain);
 
-                    for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+                    // An exit callback that disposes the machine stops the loop after its own state: Dispose does not
+                    // exit states, and the next exit would release a state whose scope Dispose has destroyed.
+                    for (var i = _currentStates.Count - 1; i >= divergeIndex && !_isDisposed; i--)
                     {
                         // An exit that has started always completes (see ExitStateAsync), so the state
                         // leaves the chain even when its exit is cancelled or throws.
@@ -200,6 +211,11 @@ namespace Aspid.Core.HSM
                         _currentStates.Add(state);
                         await EnterStateAsync(state, token);
                     }
+
+                    // Disposed by the last callback, with nothing left to exit or enter after it: the transition was
+                    // still cut short. Dispose has cancelled the token, so this ends as a disposed transition.
+                    if (_isDisposed)
+                        throw new OperationCanceledException(token);
                 }
                 catch (Exception exception)
                 {
@@ -291,17 +307,31 @@ namespace Aspid.Core.HSM
         // exit throws is still removed and released. The change is then closed the same way as a failed sync one.
         private async UniTask RollBackAsync(int divergeIndex, Exception cause)
         {
-            // Dispose does not exit states; the ones this transition reached are disposed with the rest.
-            if (_isDisposed)
-                return;
-
             List<Exception>? failures = null;
 
-            for (var i = _currentStates.Count - 1; i >= divergeIndex; i--)
+            // Dispose does not exit states; the ones this transition reached are disposed with the rest. A rollback
+            // exit that disposes the machine stops the rollback after its own state the same way.
+            for (var i = _currentStates.Count - 1; i >= divergeIndex && !_isDisposed; i--)
             {
                 try { await ExitStateAsync(_currentStates[i], CancellationToken.None); }
                 catch (Exception exception) { (failures ??= new List<Exception>()).Add(exception); }
                 finally { _currentStates.RemoveAt(i); }
+            }
+
+            if (_isDisposed)
+            {
+                // Not closed: Dispose has detached every extension, and a disposed machine gets no OnChangedState.
+                // The chain still keeps a leaf, as at start.
+                if (_currentStates.Count == 0)
+                    _currentStates.Add(new EmptyState());
+
+                if (failures is not null)
+                {
+                    failures.Insert(0, cause);
+                    throw new AggregateException("A state change failed, and rolling it back failed as well.", failures);
+                }
+
+                return;
             }
 
             CloseFailedChange(cause, failures);

@@ -19,16 +19,18 @@ namespace Aspid.Core.HSM
         private MonoStateMachineCore? _stateMachine;
 
         /// <summary>
-        /// <c>true</c> after <see cref="Initialize"/> has been called.
+        /// Gets a value indicating whether <see cref="Initialize"/> has been called and <see cref="Dispose"/> has not
+        /// been called since; after <see cref="Dispose"/>, <see cref="Initialize"/> creates a new machine.
         /// </summary>
-        public bool IsInitialized => _stateMachine is not null;
+        public bool IsInitialized => _stateMachine is { IsDisposed: false };
 
         /// <inheritdoc />
         public IReadOnlyList<IState> CurrentStates => _stateMachine?.CurrentStates ?? EmptyStates;
 
         #region Initialize
         /// <summary>
-        /// Initializes the state machine with the given factory. Idempotent — subsequent calls are ignored.
+        /// Initializes the state machine with the given factory. Idempotent — subsequent calls are ignored until
+        /// <see cref="Dispose"/>.
         /// </summary>
         /// <param name="stateFactory">The factory used to create and release state instances.</param>
         public void Initialize(StateFactory stateFactory)
@@ -82,30 +84,45 @@ namespace Aspid.Core.HSM
             _stateMachine!.RegisterTransition(transition);
 
         #region Update
-        private void Update()
+        /// <summary>
+        /// Called by Unity every frame to dispatch <see cref="IUpdateController"/> to the active states and extensions.
+        /// </summary>
+        /// <remarks>
+        /// An override must call <c>base.Update()</c>, or the machine stops ticking. A subclass that declares its own
+        /// <c>Update</c> without <see langword="override"/> hides this one, and Unity calls only the subclass's.
+        /// </remarks>
+        protected virtual void Update()
         {
-            if (_stateMachine is null) return;
+            if (!IsInitialized) return;
 
             OnUpdating();
-            _stateMachine.InvokeUpdate(Time.deltaTime);
+            _stateMachine!.InvokeUpdate(Time.deltaTime);
             OnUpdated();
         }
 
-        private void LateUpdate()
+        /// <summary>
+        /// Called by Unity every frame to dispatch <see cref="ILateUpdateController"/> to the active states and extensions.
+        /// </summary>
+        /// <remarks>An override must call <c>base.LateUpdate()</c>, as for <see cref="Update"/>.</remarks>
+        protected virtual void LateUpdate()
         {
-            if (_stateMachine is null) return;
+            if (!IsInitialized) return;
 
             OnLateUpdating();
-            _stateMachine.InvokeLateUpdate(Time.deltaTime);
+            _stateMachine!.InvokeLateUpdate(Time.deltaTime);
             OnLateUpdated();
         }
 
-        private void FixedUpdate()
+        /// <summary>
+        /// Called by Unity every fixed step to dispatch <see cref="IFixedUpdateController"/> to the active states and extensions.
+        /// </summary>
+        /// <remarks>An override must call <c>base.FixedUpdate()</c>, as for <see cref="Update"/>.</remarks>
+        protected virtual void FixedUpdate()
         {
-            if (_stateMachine is null) return;
+            if (!IsInitialized) return;
 
             OnFixedUpdating();
-            _stateMachine.InvokeFixedUpdate(Time.fixedDeltaTime);
+            _stateMachine!.InvokeFixedUpdate(Time.fixedDeltaTime);
             OnFixedUpdated();
         }
 
@@ -166,8 +183,21 @@ namespace Aspid.Core.HSM
         /// <summary>
         /// Disposes the internal state machine, detaching all extensions and disposing all active states.
         /// </summary>
+        /// <remarks>
+        /// Calls made after it are ignored, as by <see cref="StateMachineBase.Dispose"/>, and <see cref="IsInitialized"/>
+        /// is <see langword="false"/> again.
+        /// </remarks>
         public void Dispose() =>
             _stateMachine?.Dispose();
+
+        /// <summary>
+        /// Called by Unity when the component or its GameObject is destroyed to <see cref="Dispose"/> the machine.
+        /// </summary>
+        /// <remarks>
+        /// An override must call <c>base.OnDestroy()</c>, or the states and their scopes are never disposed.
+        /// </remarks>
+        protected virtual void OnDestroy() =>
+            Dispose();
 
         /// <inheritdoc cref="StateMachineBase.Disposing"/>
         protected virtual void Disposing() { }
