@@ -45,6 +45,35 @@ public class EnteredStageEmitTests
             {
                 public ParallelState(LoadStep load, GoToStep next) => AddControllers(load, next);
             }
+
+            public sealed class Hud : IEnterController, IExitController
+            {
+                public void OnEnter() { }
+
+                public void OnExit() { }
+            }
+
+            public sealed class FailurePolicy : IEnteredFailedController
+            {
+                public void OnEnteredFailed(IState state, System.Exception exception) { }
+            }
+
+            [ControllerGroup]
+            public sealed partial class GuardedState : IState
+            {
+                public GuardedState(Hud hud, LoadStep load, FailurePolicy policy) => AddControllers(hud, load, policy);
+            }
+
+            public sealed class LoadEnter : IAsyncEnterController
+            {
+                public UniTask OnEnterAsync(System.Threading.CancellationToken cancellationToken) => UniTask.CompletedTask;
+            }
+
+            [ControllerGroup]
+            public sealed partial class EnterState : IState
+            {
+                public EnterState(LoadEnter first, LoadEnter second) => AddControllers(first, second);
+            }
         }
         """;
 
@@ -64,6 +93,36 @@ public class EnteredStageEmitTests
     }
 
     [Fact]
+    public void No_step_starts_once_the_state_has_exited()
+    {
+        var (generated, _) = RunGenerator("LoadingState");
+
+        var checks = generated.Split("entry.Lifetime.ThrowIfCancellationRequested();").Length - 1;
+        Assert.Equal(3, checks);
+    }
+
+    [Fact]
+    public void The_failure_handler_of_a_group_is_not_switched_off_by_its_exit()
+    {
+        var (generated, _) = RunGenerator("GuardedState");
+
+        var handler = generated.Substring(generated.IndexOf("IEnteredFailedController.OnEnteredFailed", StringComparison.Ordinal));
+        handler = handler.Substring(0, handler.IndexOf("OnEnteredFailed(state,exception);", StringComparison.Ordinal));
+        Assert.DoesNotContain("__enteredControllers", handler);
+
+        // The stage of the same group stays guarded: its steps are skipped once the exit has run.
+        Assert.Contains("__enteredControllers > 1", generated);
+    }
+
+    [Fact]
+    public void Other_async_pairs_stay_parallel_by_default()
+    {
+        var (generated, _) = RunGenerator("EnterState");
+
+        Assert.Contains("WhenAll", generated);
+    }
+
+    [Fact]
     public void AsyncMode_on_the_group_overrides_the_default()
     {
         var (generated, _) = RunGenerator("ParallelState");
@@ -74,7 +133,7 @@ public class EnteredStageEmitTests
     [Fact]
     public void Generated_groups_compile()
     {
-        var (_, diagnostics) = RunGenerator("LoadingState");
+        var (_, diagnostics) = RunGenerator("GuardedState");
 
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
     }

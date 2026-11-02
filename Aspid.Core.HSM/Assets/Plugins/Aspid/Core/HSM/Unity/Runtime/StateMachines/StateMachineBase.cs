@@ -604,7 +604,7 @@ namespace Aspid.Core.HSM
                 {
                     // Async wins, as for enter and exit: a group with one async step implements the async interface only.
                     if (state is IAsyncEnteredController stage)
-                        RunEnteredStageAsync(state, stage, entry).Forget();
+                        RunEnteredStageAsync(state, stage, entry, FindEnteredFailedController(state)).Forget();
                     else
                         ((IEnteredController)state).OnEntered(entry);
                 }
@@ -623,7 +623,11 @@ namespace Aspid.Core.HSM
 
         // Owns a stage the machine started and does not await. Its synchronous part runs inside the caller's change, so a
         // throw there is reported like a later one instead of reaching that caller.
-        private async UniTaskVoid RunEnteredStageAsync(IState state, IAsyncEnteredController stage, StateEntry entry)
+        private async UniTaskVoid RunEnteredStageAsync(
+            IState state,
+            IAsyncEnteredController stage,
+            StateEntry entry,
+            IEnteredFailedController? handler)
         {
             try
             {
@@ -631,26 +635,30 @@ namespace Aspid.Core.HSM
             }
             catch (TransitionSupersededException) { }
             catch (StateMachineDisposedException) { }
-            catch (OperationCanceledException exception) when (entry.IsStageCancellation(exception))
+            catch (OperationCanceledException exception)
             {
-                // The state exited or the machine was disposed while the stage waited.
+                // A transition the stage started cancelled itself: a failure, reported as that transition ended. Otherwise
+                // a cancellation after the state exited or the machine was disposed is the stage's own, and silent.
+                if (entry.FindTransitionCancellation(exception) is { } transitionCancellation)
+                    ReportEnteredFailure(state, handler, transitionCancellation);
+                else if (!entry.Lifetime.IsCancellationRequested)
+                    ReportEnteredFailure(state, handler, exception);
             }
             catch (Exception exception)
             {
-                // A plain cancellation is recreated at every await: the one that escaped stands for the transition failure.
-                ReportEnteredFailure(state, exception is OperationCanceledException && entry.TransitionFailure is { } failure
-                    ? failure
-                    : exception);
+                ReportEnteredFailure(state, handler, exception);
             }
         }
 
-        // The failed state's handler, else the nearest active ancestor's, else the machine's fallback. The state may have
-        // exited already: its instance is asked anyway, and its ancestors are looked up in the chain by type.
-        private void ReportEnteredFailure(IState state, Exception exception)
+        // The handler found when the stage started, else the machine's fallback. After Dispose no handler is asked: the
+        // states and the machine are gone, and the failure goes where a forgotten UniTask's would.
+        private void ReportEnteredFailure(IState state, IEnteredFailedController? handler, Exception exception)
         {
             try
             {
-                if (FindEnteredFailedController(state) is { } handler)
+                if (_isDisposed)
+                    UniTask.FromException(exception).Forget();
+                else if (handler is not null)
                     handler.OnEnteredFailed(state, exception);
                 else
                     OnEnteredFailed(state, exception);
@@ -662,18 +670,14 @@ namespace Aspid.Core.HSM
             }
         }
 
+        // The state's own handler, else the nearest one above it. Taken when the stage starts, while the state and the
+        // states above it are active: a transition that fails after it has left the branch still reaches its handler.
         private IEnteredFailedController? FindEnteredFailedController(IState state)
         {
-            if (state.GetController<IEnteredFailedController>() is { } own)
-                return own;
-
-            for (var type = StateHierarchy.GetParentType(state.GetType()); type is not null; type = StateHierarchy.GetParentType(type))
+            for (var i = _currentStates.IndexOf(state); i >= 0; i--)
             {
-                foreach (var active in _currentStates)
-                {
-                    if (active.GetType() == type && active.GetController<IEnteredFailedController>() is { } handler)
-                        return handler;
-                }
+                if (_currentStates[i].GetController<IEnteredFailedController>() is { } handler)
+                    return handler;
             }
 
             return null;

@@ -61,8 +61,9 @@ recorded when the transition is cancelled, not guessed from the machine's state 
 A stage that waits for an event after its state is entered implements `IAsyncEnteredController`: the machine starts
 `OnEnteredAsync(StateEntry entry)` once the transition is over and owns its outcome. The state exiting, the next
 transition being superseded and the machine being disposed stay silent; any other failure goes to the nearest
-`IEnteredFailedController` up the chain, or to the machine's `OnEnteredFailed`. Leave the state through
-`entry.ChangeStateAsync<T>()`, so a failure of that transition is reported even after the state has exited.
+`IEnteredFailedController` on the stage's state or above it when the stage started, or to the machine's
+`OnEnteredFailed`. Leave the state through `entry.ChangeStateAsync<T>()`, so a failure of that transition is reported
+even after the state has exited. Once the state has exited, the entry starts no transition.
 
 ## License
 

@@ -86,6 +86,15 @@ public sealed class StageNonGenericChild : BaseTestState, IChildState
     public Type ParentState => typeof(StageBranch);
 }
 
+/// <summary>A root outside the branch whose enter throws: a transition to it leaves the branch before it fails.</summary>
+public sealed class StageThrowingRoot : BaseTestState, IAsyncEnterController
+{
+    public UniTask OnEnterAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("root enter failed");
+}
+
+public sealed class StageLoadingToThrowing : ITransition<StageLoading, StageThrowingEnter>;
+
 /// <summary>Implements both entered interfaces: only the async one may run.</summary>
 public sealed class StageBoth : StagedState, IChildState<StageBranch>, IEnteredController
 {
@@ -128,6 +137,7 @@ public class EnteredStageTests
         _factory.RegisterState<StageSelfCancellingEnter>();
         _factory.RegisterState<StageBlockingEnter>();
         _factory.RegisterState<StageNonGenericChild>();
+        _factory.RegisterState<StageThrowingRoot>();
         _sm = new StageMachine(_factory);
     }
 
@@ -347,6 +357,134 @@ public class EnteredStageTests
         Assert.True(_loading.Entry!.Lifetime.IsCancellationRequested);
         Assert.Equal(1, _branch.StageStarted);
         AssertSilent();
+    }
+
+    [Fact]
+    public async Task The_branch_handler_sees_a_failed_transition_out_of_the_branch()
+    {
+        _loading.Stage = entry => entry.ChangeStateAsync<StageThrowingRoot>();
+
+        await _sm.ChangeStateAsync<StageLoading>();
+
+        Assert.DoesNotContain(_branch, _sm.CurrentStates);
+        Assert.Equal("root enter failed", SingleFailure().Message);
+        Assert.Empty(_sm.Fallback);
+    }
+
+    [Fact]
+    public async Task The_own_handler_is_asked_after_its_state_exited()
+    {
+        _ownHandler.Stage = entry => entry.ChangeStateAsync<StageThrowingEnter>();
+
+        await _sm.ChangeStateAsync<StageWithOwnHandler>();
+
+        Assert.Equal("enter failed", Assert.Single(_ownHandler.Failures).Message);
+        Assert.Empty(_branch.Failures);
+    }
+
+    [Fact]
+    public async Task A_stage_that_outlived_its_state_does_not_move_the_machine()
+    {
+        var finish = new UniTaskCompletionSource();
+        _loading.Stage = async entry =>
+        {
+            await finish.Task;
+            await entry.ChangeStateAsync<StageDriving>();
+        };
+        await _sm.ChangeStateAsync<StageLoading>();
+        await _sm.ChangeStateAsync<StageOther>();
+
+        finish.TrySetResult();
+
+        Assert.IsType<StageOther>(_sm.CurrentStates[^1]);
+        Assert.Equal(0, _driving.StageStarted);
+        AssertSilent();
+    }
+
+    [Fact]
+    public async Task A_handled_failure_is_not_reported_when_a_linked_wait_ends_on_exit()
+    {
+        _loading.Stage = async entry =>
+        {
+            try { await entry.ChangeStateAsync<StageNonGenericChild>(); }
+            catch (InvalidOperationException) { }
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(entry.Lifetime);
+            await UniTask.Never(linked.Token);
+        };
+        await _sm.ChangeStateAsync<StageLoading>();
+
+        await _sm.ChangeStateAsync<StageOther>();
+
+        AssertSilent();
+    }
+
+    [Fact]
+    public async Task A_cancellation_of_the_stage_itself_is_reported_as_it_is()
+    {
+        _loading.Stage = async entry =>
+        {
+            try { await entry.ChangeStateAsync<StageNonGenericChild>(); }
+            catch (InvalidOperationException) { }
+
+            using var timeout = new CancellationTokenSource();
+            timeout.Cancel();
+            await UniTask.Never(timeout.Token);
+        };
+
+        await _sm.ChangeStateAsync<StageLoading>();
+
+        Assert.IsType<OperationCanceledException>(SingleFailure());
+    }
+
+    [Fact]
+    public async Task A_failure_after_Dispose_asks_no_handler()
+    {
+        var published = new List<Exception>();
+        void OnUnobserved(Exception exception) => published.Add(exception);
+        var finish = new UniTaskCompletionSource();
+        _loading.Stage = async _ =>
+        {
+            await finish.Task;
+            throw new InvalidOperationException("late failure");
+        };
+        await _sm.ChangeStateAsync<StageLoading>();
+        _sm.Dispose();
+
+        UniTaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            finish.TrySetResult();
+        }
+        finally
+        {
+            UniTaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+
+        AssertSilent();
+        Assert.Contains(published, exception => exception.Message == "late failure");
+    }
+
+    [Fact]
+    public async Task A_failed_TransitionToAsync_through_the_entry_is_reported()
+    {
+        _sm.RegisterTransition(new StageLoadingToThrowing());
+        _loading.Stage = entry => entry.TransitionToAsync<StageThrowingEnter>();
+
+        await _sm.ChangeStateAsync<StageLoading>();
+
+        Assert.Equal("enter failed", SingleFailure().Message);
+    }
+
+    [Fact]
+    public async Task A_failed_TransitionViaAsync_through_the_entry_is_reported()
+    {
+        _sm.RegisterTransition(new StageLoadingToThrowing());
+        _loading.Stage = entry => entry.TransitionViaAsync<StageLoadingToThrowing>();
+
+        await _sm.ChangeStateAsync<StageLoading>();
+
+        Assert.Equal("enter failed", SingleFailure().Message);
     }
 
     [Fact]
