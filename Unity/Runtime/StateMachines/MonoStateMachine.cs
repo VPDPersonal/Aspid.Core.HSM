@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using UnityEngine;
+using Cysharp.Threading.Tasks;
 using System.Collections.Generic;
 
 // ReSharper disable once CheckNamespace
@@ -140,6 +141,10 @@ namespace Aspid.Core.HSM
 
         /// <inheritdoc cref="StateMachineBase.StrictTransitions"/>
         protected virtual bool StrictTransitions => false;
+
+        /// <inheritdoc cref="StateMachineBase.OnEnteredFailed"/>
+        protected virtual void OnEnteredFailed(IState state, Exception exception) =>
+            UniTask.FromException(exception).Forget();
         #endregion
 
         #region ChangeState hooks
@@ -180,6 +185,7 @@ namespace Aspid.Core.HSM
         internal bool RaiseIsStateEnabled(Type stateType) => IsStateEnabled(stateType);
         internal bool RaiseIsTransitionEnabled(Type sourceType, Type targetType) => IsTransitionEnabled(sourceType, targetType);
         internal bool RaiseStrictTransitions() => StrictTransitions;
+        internal void RaiseEnteredFailed(IState state, Exception exception) => OnEnteredFailed(state, exception);
         internal void RaiseChangingState() => OnChangingState();
         internal void RaiseChangedState() => OnChangedState();
         internal void RaiseEnteringState(IState state) => OnEnteringState(state);

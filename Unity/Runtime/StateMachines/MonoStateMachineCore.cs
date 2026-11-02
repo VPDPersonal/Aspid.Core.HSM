@@ -31,6 +31,9 @@ namespace Aspid.Core.HSM
 
         protected override bool StrictTransitions => _owner.RaiseStrictTransitions();
 
+        protected override void OnEnteredFailed(IState state, Exception exception) =>
+            _owner.RaiseEnteredFailed(state, exception);
+
         protected override void OnChangingState() => _owner.RaiseChangingState();
 
         protected override void OnChangedState() => _owner.RaiseChangedState();

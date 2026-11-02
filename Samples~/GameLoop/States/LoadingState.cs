@@ -29,7 +29,7 @@ namespace Aspid.Core.HSM.Samples.GameLoop.States
             Debug.Log("[HSM] LoadingState: assets loaded");
         }
 
-        public void OnEntered(CancellationToken stateLifetime)
+        public void OnEntered(StateEntry entry)
         {
             Debug.Log("[HSM] LoadingState: transition complete, starting the game");
             _stateMachine.TransitionTo<SinglePlayerState>();
