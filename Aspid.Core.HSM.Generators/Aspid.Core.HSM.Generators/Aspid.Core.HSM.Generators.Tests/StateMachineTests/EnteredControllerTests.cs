@@ -28,10 +28,10 @@ public abstract class EnteredLoggingState : IState, IEnteredController, IExitCon
 
     public void Enter() => Log?.Add("enter " + GetType().Name);
 
-    public void OnEntered(CancellationToken stateLifetime)
+    public void OnEntered(StateEntry entry)
     {
         EnteredCalled++;
-        Lifetime = stateLifetime;
+        Lifetime = entry.Lifetime;
         TransitioningInOnEntered = Machine?.IsTransitioning;
         Log?.Add("entered " + GetType().Name);
         OnEnteredAction?.Invoke();

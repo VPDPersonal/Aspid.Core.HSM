@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **`IEnteredController.OnEntered(StateEntry entry)`** replaces `OnEntered(CancellationToken stateLifetime)`; the token is `entry.Lifetime`. The entry also starts state changes on the stage's behalf (below).
+- **`AsyncEnteredController` is removed.** Its stage, its failure policy and its "transition through the base" are now the machine's: implement `IAsyncEnteredController`, handle failures with `IEnteredFailedController`, and change state through `StateEntry`.
+
+### Added
+
+- **`IAsyncEnteredController.OnEnteredAsync(StateEntry entry)`**, the async counterpart of `IEnteredController`. The machine starts it where it would call `OnEntered` — after `ChangeState` and `ChangeStateAsync`, root to leaf, once the transition is over — and does not await it; a state that implements both is started through the async one only. In a `[ControllerGroup]` its steps run one after another in `AddControllers` order by default, synchronous `IEnteredController` steps between them, and no step starts once the state has exited. The machine owns the outcome: the entry's lifetime cancelled, `TransitionSupersededException` and `StateMachineDisposedException` are silent; any other failure is reported.
+- **`StateEntry`**: the entry's `Lifetime` and `ChangeStateAsync<T>()`, `TransitionToAsync<T>()`, `TransitionViaAsync<T>()` on the stage's behalf. A transition started through it that fails is reported even when it has already exited the state — a plain cancellation of the next state's own enter included — while the stage's cancellation by that exit stays silent, also through a token linked to `Lifetime`. A failure the stage catches itself is not reported. Once `Lifetime` is cancelled, the entry starts no transition and returns a task cancelled by `Lifetime`, so a stage that outlives its state cannot move the machine.
+- **`IEnteredFailedController.OnEnteredFailed(IState state, Exception exception)`**: handles a failed stage of its state or of any state below it. The machine finds it when the stage starts — on the stage's state, then the states above it, nearest first — and calls it even if that state has exited since, so a branch root's handler also sees a failed transition out of the branch. In a `[ControllerGroup]` it is not switched off by the group's exit. With none, the machine's `protected virtual OnEnteredFailed` runs (also on `MonoStateMachine`), which by default sends the failure to `UniTaskScheduler.UnobservedTaskException`. A handler that throws goes there too, and so does a failure after `Dispose`, with no handler asked.
+- `AsyncOfAttribute.DefaultMode`: how a `[ControllerGroup]` runs the async controllers of that interface when the group has no `[AsyncMode]` for it. Unset, they run in parallel, as before.
+
 ## [0.0.1-alpha.5] — 2026-10-16
 
 ### Added

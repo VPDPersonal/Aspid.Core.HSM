@@ -58,9 +58,12 @@ recorded when the transition is cancelled, not guessed from the machine's state 
 | `OperationCanceledException` (exactly) | The caller's token, or an enter/exit callback cancelled itself (a load gave up) | A failure: apply your error policy |
 | any other exception | An enter, exit or hook threw | A failure: apply your error policy |
 
-`AsyncEnteredController` packages this for a stage that waits for an event after its state is entered: it runs
-`RunAsync(stateLifetime)`, stays silent when the state exits, the next transition is superseded or the machine is
-disposed, and passes everything else to `OnFailed`.
+A stage that waits for an event after its state is entered implements `IAsyncEnteredController`: the machine starts
+`OnEnteredAsync(StateEntry entry)` once the transition is over and owns its outcome. The state exiting, the next
+transition being superseded and the machine being disposed stay silent; any other failure goes to the nearest
+`IEnteredFailedController` on the stage's state or above it when the stage started, or to the machine's
+`OnEnteredFailed`. Leave the state through `entry.ChangeStateAsync<T>()`, so a failure of that transition is reported
+even after the state has exited. Once the state has exited, the entry starts no transition.
 
 ## License
 

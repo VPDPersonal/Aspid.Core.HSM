@@ -7,6 +7,8 @@ public static class HsmClasses
     public static readonly TypeText IController = new(nameof(IController), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly TypeText IEnterController = new(nameof(IEnterController), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly TypeText IExitController = new(nameof(IExitController), namespaceText: HsmNamespaces.Aspid_Core_HSM);
+    public static readonly TypeText IEnteredFailedController = new(nameof(IEnteredFailedController), namespaceText: HsmNamespaces.Aspid_Core_HSM);
+    public static readonly TypeText StateEntry = new(nameof(StateEntry), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly TypeText IChildState = new(nameof(IChildState), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly TypeText ITransition = new(nameof(ITransition), namespaceText: HsmNamespaces.Aspid_Core_HSM);
     public static readonly TypeText IState = new(nameof(IState), namespaceText: HsmNamespaces.Aspid_Core_HSM);

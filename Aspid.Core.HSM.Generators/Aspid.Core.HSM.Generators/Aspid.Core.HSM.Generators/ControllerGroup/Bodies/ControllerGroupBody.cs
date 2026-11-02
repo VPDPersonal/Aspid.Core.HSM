@@ -173,7 +173,10 @@ public static class ControllerGroupBody
                         ? EntryRole.Enter
                         : IsInterface(interfaceData, IExitController)
                             ? EntryRole.Exit
-                            : EntryRole.Guarded;
+                            // A failure handler is asked after its state has exited too: the exit must not switch it off.
+                            : IsInterface(interfaceData, IEnteredFailedController)
+                                ? EntryRole.None
+                                : EntryRole.Guarded;
 
                 foreach (var method in interfaceData.Methods.Where(m => m.Symbol.ReturnsVoid))
                 {
@@ -215,8 +218,12 @@ public static class ControllerGroupBody
 
         // Opens the per-controller block: an enter records the controller as reached before calling it
         // (a controller that throws from its own enter still gets its exit), the rest skip unreached ones.
-        private CodeWriter BeginControllerCall(EntryRole role, int index, string? cancellationTokenName)
+        // An entered stage stops before each step once its state has exited, whatever the role.
+        private CodeWriter BeginControllerCall(EntryRole role, int index, string? cancellationTokenName, string? lifetime = null)
         {
+            if (lifetime is not null)
+                code.AppendLine($"{lifetime}.ThrowIfCancellationRequested();");
+
             switch (role)
             {
                 case EntryRole.Enter:
@@ -390,6 +397,13 @@ public static class ControllerGroupBody
                     .FirstOrDefault(p => p.Type.ToDisplayString() == "System.Threading.CancellationToken")
                     ?.Name;
 
+                // The steps of an entered stage would otherwise go on for a state that has exited and been released.
+                var lifetime = asyncSymbol.Parameters
+                    .FirstOrDefault(p => p.Type.ToDisplayString() == StateEntry)
+                    ?.Name is { } entry
+                    ? $"{entry}.Lifetime"
+                    : null;
+
                 // Sequential mode (or Parallel with 0-1 async controllers): await each individually
                 for (var step = 0; step < indexes.Length; step++)
                 {
@@ -397,7 +411,7 @@ public static class ControllerGroupBody
                     var index = indexes[pos];
                     var isAsync = isAsyncFlags[pos];
 
-                    code.BeginControllerCall(role, index, cancellationTokenName)
+                    code.BeginControllerCall(role, index, cancellationTokenName, lifetime)
                         .AppendLine($"using ({GetMarkerNameForController(index)}.Auto())")
                         .BeginBlock();
 

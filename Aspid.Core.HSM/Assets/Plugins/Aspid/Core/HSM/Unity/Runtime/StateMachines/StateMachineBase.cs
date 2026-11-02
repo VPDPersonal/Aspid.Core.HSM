@@ -34,9 +34,9 @@ namespace Aspid.Core.HSM
         private CancellationTokenSource? _activeTransitionCts;
         private bool _isDisposed;
 
-        // IEnteredController states entered by the running operation, in enter order, each with the lifetime it was
-        // entered with. A state exited since then has had that lifetime cancelled, so it is skipped when notified.
-        private readonly List<(IState State, IEnteredController Controller, CancellationTokenSource Lifetime)> _awaitingEntered = new();
+        // States with an entered controller, entered by the running operation, in enter order, each with the lifetime it
+        // was entered with. A state exited since then has had that lifetime cancelled, so it is skipped when notified.
+        private readonly List<(IState State, StateEntry Entry, CancellationTokenSource Lifetime)> _awaitingEntered = new();
         private readonly Dictionary<IState, CancellationTokenSource> _stateLifetimes = new();
 
         /// <inheritdoc />
@@ -536,16 +536,16 @@ namespace Aspid.Core.HSM
         #endregion
 
         #region Entered
-        // Gives a state that has an IEnteredController its lifetime and queues its OnEntered for the end of the operation.
+        // Gives a state that has an entered controller its lifetime and queues it for the end of the operation.
         private void AwaitEntered(IState state)
         {
             // Entered after a callback disposed the machine: no lifetime, since nothing would cancel or release it.
-            if (_isDisposed || state.GetController<IEnteredController>() is not { } controller)
+            if (_isDisposed || state is not (IAsyncEnteredController or IEnteredController))
                 return;
 
             var lifetime = new CancellationTokenSource();
             _stateLifetimes[state] = lifetime;
-            _awaitingEntered.Add((state, controller, lifetime));
+            _awaitingEntered.Add((state, new StateEntry(this, lifetime.Token), lifetime));
         }
 
         // A change that failed does not notify the states it entered: they keep their lifetime, not their OnEntered.
@@ -594,7 +594,7 @@ namespace Aspid.Core.HSM
             _awaitingEntered.Clear();
 
             List<Exception>? failures = null;
-            foreach (var (state, controller, lifetime) in awaiting)
+            foreach (var (state, entry, lifetime) in awaiting)
             {
                 // Exited since: its lifetime was cancelled and removed, or replaced if the state was entered again.
                 if (!_stateLifetimes.TryGetValue(state, out var current) || current != lifetime)
@@ -602,7 +602,11 @@ namespace Aspid.Core.HSM
 
                 try
                 {
-                    controller.OnEntered(lifetime.Token);
+                    // Async wins, as for enter and exit: a group with one async step implements the async interface only.
+                    if (state is IAsyncEnteredController stage)
+                        RunEnteredStageAsync(state, stage, entry, FindEnteredFailedController(state)).Forget();
+                    else
+                        ((IEnteredController)state).OnEntered(entry);
                 }
                 catch (Exception exception)
                 {
@@ -616,6 +620,81 @@ namespace Aspid.Core.HSM
             if (failures is not null)
                 throw new AggregateException("Several OnEntered callbacks threw.", failures);
         }
+
+        // Owns a stage the machine started and does not await. Its synchronous part runs inside the caller's change, so a
+        // throw there is reported like a later one instead of reaching that caller.
+        private async UniTaskVoid RunEnteredStageAsync(
+            IState state,
+            IAsyncEnteredController stage,
+            StateEntry entry,
+            IEnteredFailedController? handler)
+        {
+            try
+            {
+                await stage.OnEnteredAsync(entry);
+            }
+            catch (TransitionSupersededException) { }
+            catch (StateMachineDisposedException) { }
+            catch (OperationCanceledException exception)
+            {
+                // A transition the stage started cancelled itself: a failure, reported as that transition ended. Otherwise
+                // a cancellation after the state exited or the machine was disposed is the stage's own, and silent.
+                if (entry.FindTransitionCancellation(exception) is { } transitionCancellation)
+                    ReportEnteredFailure(state, handler, transitionCancellation);
+                else if (!entry.Lifetime.IsCancellationRequested)
+                    ReportEnteredFailure(state, handler, exception);
+            }
+            catch (Exception exception)
+            {
+                ReportEnteredFailure(state, handler, exception);
+            }
+        }
+
+        // The handler found when the stage started, else the machine's fallback. After Dispose no handler is asked: the
+        // states and the machine are gone, and the failure goes where a forgotten UniTask's would.
+        private void ReportEnteredFailure(IState state, IEnteredFailedController? handler, Exception exception)
+        {
+            try
+            {
+                if (_isDisposed)
+                    UniTask.FromException(exception).Forget();
+                else if (handler is not null)
+                    handler.OnEnteredFailed(state, exception);
+                else
+                    OnEnteredFailed(state, exception);
+            }
+            catch (Exception handlerFailure)
+            {
+                // Nothing awaits the stage, so a handler that throws has nowhere else to go.
+                UniTask.FromException(handlerFailure).Forget();
+            }
+        }
+
+        // The state's own handler, else the nearest one above it. Taken when the stage starts, while the state and the
+        // states above it are active: a transition that fails after it has left the branch still reaches its handler.
+        private IEnteredFailedController? FindEnteredFailedController(IState state)
+        {
+            for (var i = _currentStates.IndexOf(state); i >= 0; i--)
+            {
+                if (_currentStates[i].GetController<IEnteredFailedController>() is { } handler)
+                    return handler;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Called when an <see cref="IAsyncEnteredController"/> stage fails and no state in its chain implements
+        /// <see cref="IEnteredFailedController"/>. Override to apply a machine-wide policy.
+        /// </summary>
+        /// <remarks>
+        /// By default the failure goes to <see cref="UniTaskScheduler.UnobservedTaskException"/>, as for a forgotten
+        /// <see cref="UniTask"/> that faulted; in Unity it is logged when nothing handles that event.
+        /// </remarks>
+        /// <param name="state">The state whose stage failed; it may have exited already.</param>
+        /// <param name="exception">The failure.</param>
+        protected virtual void OnEnteredFailed(IState state, Exception exception) =>
+            UniTask.FromException(exception).Forget();
 
         private void EndAllStateLifetimes()
         {

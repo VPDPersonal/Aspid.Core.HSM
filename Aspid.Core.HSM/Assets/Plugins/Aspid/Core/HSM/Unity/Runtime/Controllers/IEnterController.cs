@@ -1,6 +1,4 @@
 #nullable enable
-using System.Threading;
-
 // ReSharper disable once CheckNamespace
 namespace Aspid.Core.HSM
 {
@@ -26,8 +24,8 @@ namespace Aspid.Core.HSM
     /// queued follow-ups exited again.
     /// </para>
     /// <para>
-    /// A state change requested here is a new transition, not a redirect of the finished one. To wait for an event,
-    /// start the wait here and pass it <c>stateLifetime</c>.
+    /// A state change requested here is a new transition, not a redirect of the finished one. To wait for an event and
+    /// then change state, implement <see cref="IAsyncEnteredController"/> instead: the machine runs it and reports its outcome.
     /// </para>
     /// <para>
     /// Only states of the active chain are notified. An <see cref="IExtensionState"/> is attached outside any transition,
@@ -39,9 +37,10 @@ namespace Aspid.Core.HSM
         /// <summary>
         /// Called once for each entry into the state, after the transition that entered it has completed.
         /// </summary>
-        /// <param name="stateLifetime">
-        /// Cancelled when the state starts to exit, before its exit controllers run, and when the machine is disposed.
+        /// <param name="entry">
+        /// The entry: its lifetime and the state changes started on its behalf. Their failures reach
+        /// <see cref="IEnteredFailedController"/> only from an <see cref="IAsyncEnteredController"/> stage.
         /// </param>
-        public void OnEntered(CancellationToken stateLifetime);
+        public void OnEntered(StateEntry entry);
     }
 }
