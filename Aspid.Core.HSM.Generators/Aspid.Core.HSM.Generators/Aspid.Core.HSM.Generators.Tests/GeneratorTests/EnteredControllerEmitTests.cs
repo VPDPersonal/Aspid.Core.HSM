@@ -26,13 +26,13 @@ public class EnteredControllerEmitTests
 
             public sealed class FinishWatcher : IEnteredController
             {
-                public void OnEntered(CancellationToken stateLifetime) { }
+                public void OnEntered(StateEntry entry) { }
             }
 
             public sealed class HudController : IEnterController, IEnteredController
             {
                 public void OnEnter() { }
-                public void OnEntered(CancellationToken stateLifetime) { }
+                public void OnEntered(StateEntry entry) { }
             }
 
             [ControllerGroup]
@@ -51,9 +51,9 @@ public class EnteredControllerEmitTests
     {
         var (generated, _) = RunGenerator();
 
-        Assert.Contains("void global::Aspid.Core.HSM.IEnteredController.OnEntered(global::System.Threading.CancellationToken stateLifetime)", generated);
-        Assert.Contains("((global::Aspid.Core.HSM.IEnteredController)__controller1).OnEntered(stateLifetime);", generated);
-        Assert.Contains("((global::Aspid.Core.HSM.IEnteredController)__controller2).OnEntered(stateLifetime);", generated);
+        Assert.Contains("void global::Aspid.Core.HSM.IEnteredController.OnEntered(global::Aspid.Core.HSM.StateEntry entry)", generated);
+        Assert.Contains("((global::Aspid.Core.HSM.IEnteredController)__controller1).OnEntered(entry);", generated);
+        Assert.Contains("((global::Aspid.Core.HSM.IEnteredController)__controller2).OnEntered(entry);", generated);
     }
 
     [Fact]

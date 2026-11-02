@@ -17,6 +17,12 @@ namespace Aspid.Core.HSM
         /// </summary>
         public Type SyncInterface { get; }
 
+        /// <summary>
+        /// Gets or sets how a <c>[ControllerGroup]</c> runs the async controllers of this interface when the group has no
+        /// <c>[AsyncMode]</c> for it. Unset, they run in parallel.
+        /// </summary>
+        public AsyncExecutionMode DefaultMode { get; set; }
+
         /// <param name="syncInterface">The synchronous controller interface type.</param>
         public AsyncOfAttribute(Type syncInterface)
         {

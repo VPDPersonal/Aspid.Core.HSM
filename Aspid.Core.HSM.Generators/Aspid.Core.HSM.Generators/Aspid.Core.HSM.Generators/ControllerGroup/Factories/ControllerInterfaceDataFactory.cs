@@ -90,6 +90,21 @@ public static class ControllerInterfaceDataFactory
         Dictionary<string, InterfaceBucket> buckets)
     {
         var result = new Dictionary<string, int>();
+
+        // The async interface's own default, [AsyncOf(..., DefaultMode = ...)], applies unless the class names a mode.
+        foreach (var kvp in buckets)
+        {
+            if (kvp.Value.AsyncType?.GetAttributes()
+                    .FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == AsyncOfAttribute) is not { } asyncOf)
+                continue;
+
+            foreach (var argument in asyncOf.NamedArguments)
+            {
+                if (argument.Key == "DefaultMode" && argument.Value.Value is int defaultMode)
+                    result[kvp.Key] = defaultMode;
+            }
+        }
+
         if (classSymbol is null) return result;
 
         foreach (var attr in classSymbol.GetAttributes())

@@ -46,14 +46,14 @@ public sealed class SelComposite : SelLogged, IChildState<SelRoot>, IEntrySelect
         return Entry();
     }
 
-    public void OnEntered(CancellationToken stateLifetime) => EnteredCalled++;
+    public void OnEntered(StateEntry entry) => EnteredCalled++;
 }
 
 public sealed class SelLeafA : SelLogged, IChildState<SelComposite>, IEnteredController
 {
     public int EnteredCalled { get; private set; }
 
-    public void OnEntered(CancellationToken stateLifetime) => EnteredCalled++;
+    public void OnEntered(StateEntry entry) => EnteredCalled++;
 }
 
 public sealed class SelLeafB : SelLogged, IChildState<SelComposite>;
