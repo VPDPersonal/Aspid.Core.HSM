@@ -16,7 +16,8 @@ namespace Aspid.Core.HSM
     /// </para>
     /// <para>
     /// In a <c>[ControllerGroup]</c> the steps run one after another in <c>AddControllers</c> order, with synchronous
-    /// <see cref="IEnteredController"/> steps between them, unless <c>[AsyncMode]</c> says otherwise.
+    /// <see cref="IEnteredController"/> steps between them, unless <c>[AsyncMode]</c> says otherwise. Once the state has
+    /// exited, the next step does not start: the group ends with a cancellation by <see cref="StateEntry.Lifetime"/>.
     /// </para>
     /// <para>
     /// The machine also owns the outcome. Silent ends: the entry's lifetime cancelled, a

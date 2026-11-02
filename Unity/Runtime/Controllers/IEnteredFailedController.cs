@@ -8,9 +8,10 @@ namespace Aspid.Core.HSM
     /// Defines a controller that handles a failed <see cref="IAsyncEnteredController"/> stage of its state or of any state below it.
     /// </summary>
     /// <remarks>
-    /// The machine looks for it on the failed state, then on its ancestors that are still active, nearest first, and calls
-    /// the first one it finds. With none, the machine's own fallback runs. One handler on the root of a branch covers every
-    /// stage under it.
+    /// The machine looks for it when the stage starts: on the stage's state, then on the states above it, nearest first.
+    /// When the stage fails, it calls the one it found, even if that state has exited since; with none, the machine's own
+    /// fallback runs. One handler on the root of a branch covers every stage under it, also when the failed transition was
+    /// leaving the branch. In a <c>[ControllerGroup]</c> it is called after the group's exit too.
     /// </remarks>
     public interface IEnteredFailedController : IController
     {

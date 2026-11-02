@@ -37,7 +37,10 @@ namespace Aspid.Core.HSM
         /// <summary>
         /// Called once for each entry into the state, after the transition that entered it has completed.
         /// </summary>
-        /// <param name="entry">The entry: its lifetime and the state changes started on its behalf.</param>
+        /// <param name="entry">
+        /// The entry: its lifetime and the state changes started on its behalf. Their failures reach
+        /// <see cref="IEnteredFailedController"/> only from an <see cref="IAsyncEnteredController"/> stage.
+        /// </param>
         public void OnEntered(StateEntry entry);
     }
 }
