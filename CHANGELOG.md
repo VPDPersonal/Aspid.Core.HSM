@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Dispose` released the active states from the root to the leaf.** A parent's `IDisposableController` ran while its children were still intact, the opposite of an exit. `Dispose` now goes from the leaf to the root, as `ChangeState` exits them; inside a `[ControllerGroup]` the controllers still run in reverse `AddControllers` order, as on exit.
+
 ## [0.0.1-alpha.6] — 2026-11-02
 
 ### Breaking
