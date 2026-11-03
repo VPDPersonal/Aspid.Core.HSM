@@ -712,7 +712,8 @@ namespace Aspid.Core.HSM
         #region Dispose
         /// <summary>
         /// Cancels a running async transition, detaches all extensions, disposes all active states via
-        /// <see cref="IDisposableController"/>, and disposes all active and cached state scopes.
+        /// <see cref="IDisposableController"/> from the leaf to the root, as an exit does, and disposes all active and
+        /// cached state scopes.
         /// </summary>
         /// <remarks>
         /// States are not exited, and neither is a cancelled transition rolled back: its states, the half-entered one
@@ -737,8 +738,8 @@ namespace Aspid.Core.HSM
                 for (int i = _activeExtensions.Count - 1; i >= 0; i--)
                     DetachExtensionAt(i);
 
-                foreach (var state in _currentStates)
-                    state.GetController<IDisposableController>()?.Dispose();
+                for (var i = _currentStates.Count - 1; i >= 0; i--)
+                    _currentStates[i].GetController<IDisposableController>()?.Dispose();
 
                 _stateFactory.DisposeAllScopes();
             }
