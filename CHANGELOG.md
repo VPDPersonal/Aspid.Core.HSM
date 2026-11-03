@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1-alpha.7] — 2026-11-03
+
 ### Fixed
 
 - **`Dispose` released the active states from the root to the leaf.** A parent's `IDisposableController` ran while its children were still intact, the opposite of an exit. `Dispose` now goes from the leaf to the root, as `ChangeState` exits them; inside a `[ControllerGroup]` the controllers still run in reverse `AddControllers` order, as on exit.
@@ -154,7 +156,8 @@ Three Roslyn incremental generators, each triggered via an attribute on a `parti
 - Dependency on [UniTask](https://github.com/Cysharp/UniTask) for the async enter/exit controllers.
 - **Game Loop** sample: a full state hierarchy with guarded transitions, async loading, extensions, scopes and extension points.
 
-[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.6...HEAD
+[Unreleased]: https://github.com/VPDPersonal/Aspid.Core.HSM/compare/v0.0.1-alpha.7...HEAD
+[0.0.1-alpha.7]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.7
 [0.0.1-alpha.6]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.6
 [0.0.1-alpha.5]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.5
 [0.0.1-alpha.4]: https://github.com/VPDPersonal/Aspid.Core.HSM/releases/tag/v0.0.1-alpha.4
