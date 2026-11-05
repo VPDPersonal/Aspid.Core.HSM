@@ -51,28 +51,32 @@ namespace Aspid.Core.HSM
 
         #region Update
         /// <summary>
-        /// Dispatches <see cref="IUpdateController.Update"/> to all active states and extensions.
+        /// Dispatches <see cref="IUpdateController.Update"/> to all active states, from the root to the leaf,
+        /// and then to the active extensions. A parent is always ticked before its children within the same tick.
         /// </summary>
         /// <param name="deltaTime">Time in seconds since the previous frame.</param>
         protected void Update(float deltaTime) =>
             Tick<IUpdateController>(deltaTime, static (controller, dt) => controller.Update(dt));
 
         /// <summary>
-        /// Dispatches <see cref="ILateUpdateController.LateUpdate"/> to all active states and extensions.
+        /// Dispatches <see cref="ILateUpdateController.LateUpdate"/> to all active states, from the root to the leaf,
+        /// and then to the active extensions. A parent is always ticked before its children within the same tick.
         /// </summary>
         /// <param name="deltaTime">Time in seconds since the previous frame.</param>
         protected void LateUpdate(float deltaTime) =>
             Tick<ILateUpdateController>(deltaTime, static (controller, dt) => controller.LateUpdate(dt));
 
         /// <summary>
-        /// Dispatches <see cref="IFixedUpdateController.FixedUpdate"/> to all active states and extensions.
+        /// Dispatches <see cref="IFixedUpdateController.FixedUpdate"/> to all active states, from the root to the leaf,
+        /// and then to the active extensions. A parent is always ticked before its children within the same tick.
         /// </summary>
         /// <param name="deltaTime">The fixed timestep interval in seconds.</param>
         protected void FixedUpdate(float deltaTime) =>
             Tick<IFixedUpdateController>(deltaTime, static (controller, dt) => controller.FixedUpdate(dt));
 
         /// <summary>
-        /// Runs one tick over the active chain and then the active extensions. A synchronous state change
+        /// Runs one tick over the active chain, from the root to the leaf, and then the active extensions. The order is
+        /// part of the contract: a controller may rely on its ancestors having been ticked earlier in the same tick. A synchronous state change
         /// requested by a controller during the tick is queued and applied once every controller has been
         /// ticked, so the tick never walks a chain that is being rewritten underneath it.
         /// </summary>
