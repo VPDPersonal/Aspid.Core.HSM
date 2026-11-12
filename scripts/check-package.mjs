@@ -1,6 +1,6 @@
 // Check the Unity package for mistakes that the .NET tests cannot see: a sample path that does not exist,
 // a file or folder without its .meta, an orphan .meta, build output inside the package, and a README badge
-// that promises another Unity version. Only tracked files count, so local Library/ or obj/ output is ignored.
+// that uses another package or release channel. Only tracked files count, so local Library/ or obj/ output is ignored.
 //   node scripts/check-package.mjs
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -43,10 +43,13 @@ for (const file of files) {
   if (!assets.has(file.slice(0, -'.meta'.length)) && file !== `${PKG}.meta`) fail(file, 'orphan .meta: its file or folder is gone');
 }
 
-// The README badge must promise the same minimum Unity as package.json.
+// Shared badges read the Unity minimum from the published channel's tagged manifest, independently of main.
+// Check the package and channel URL locally; the shared media generator validates the displayed version.
 const unity = pkg.unity ?? '';
-const badge = /badge\/Unity_([0-9.]+)%2B/.exec(readFileSync('README.md', 'utf8'))?.[1];
-if (badge !== unity) fail('README.md', `the Unity badge says ${badge ?? 'nothing'}, package.json says ${unity}`);
+const channel = pkg.version.includes('-') ? 'preview/' : '';
+const badgeUrl = `https://vpdpersonal.github.io/VPDPersonal/badges/aspid-core-hsm/${channel}status-badge-unity.svg`;
+const badge = /<img\s+src="([^"]+\/status-badge-unity\.svg)"/.exec(readFileSync('README.md', 'utf8'))?.[1];
+if (badge !== badgeUrl) fail('README.md', `the Unity badge must use ${badgeUrl}, found ${badge ?? 'nothing'}`);
 
 if (errors) process.exit(1);
 console.log(`Package OK: ${assets.size} assets with .meta, ${pkg.samples?.length ?? 0} sample(s), Unity ${unity}${pkg.unityRelease ? `.${pkg.unityRelease}` : ''}`);

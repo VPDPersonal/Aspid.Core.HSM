@@ -1,9 +1,12 @@
-# Aspid.Core.HSM
+<picture>
+  <source srcset="https://vpdpersonal.github.io/VPDPersonal/banners/aspid-core-hsm/banner.webp" type="image/webp" />
+  <img src="https://vpdpersonal.github.io/VPDPersonal/banners/aspid-core-hsm/banner.png" alt="Aspid.Core.HSM" width="100%" />
+</picture>
 
 <p>
-  <img src="https://img.shields.io/badge/Unity_6000.0%2B-000000?style=flat&logo=unity&logoColor=white&color=4fa35d" alt="Unity 6000.0+" />
-  <a href="https://github.com/VPDPersonal/Aspid.Core.HSM/releases"><img src="https://img.shields.io/github/package-json/v/VPDPersonal/Aspid.Core.HSM/upm-preview?label=Preview&labelColor=4d4425&color=a3923d" alt="Preview" /></a>
-  <img src="https://img.shields.io/badge/License-MIT-000000?style=flat&labelColor=254d2c&color=4fa35d" alt="MIT" />
+  <a href="#integration"><img src="https://vpdpersonal.github.io/VPDPersonal/badges/aspid-core-hsm/preview/status-badge-unity.svg" alt="Minimum Unity version" /></a>
+  <a href="https://github.com/VPDPersonal/Aspid.Core.HSM/releases"><img src="https://vpdpersonal.github.io/VPDPersonal/badges/aspid-core-hsm/status-badge-preview.svg" alt="Preview release" /></a>
+  <a href="LICENSE"><img src="https://vpdpersonal.github.io/VPDPersonal/badges/status-badge-license.svg" alt="MIT License" /></a>
 </p>
 
 > [!WARNING]
