@@ -1,7 +1,7 @@
 # Rules for Claude in this repository
 
-Both jobs in `.github/workflows/claude.yml` append this file to the system prompt:
-the automatic review and the `@claude` replies. Edit the rules here, in one place.
+The manual `@claude` job in `.github/workflows/claude.yml` appends this file to the system prompt.
+Automatic PR reviews are disabled. Edit the manual review rules here, in one place.
 
 ## Always
 
